@@ -530,7 +530,7 @@
     <string name="dialog_external_link_desc">Вы нажали на ссылку, ведущую за пределы приложения:\n\n%1$s\n\nХотите продолжить?</string>
     <string name="action_open">Открыть</string>
     <string name="error_no_browser">Браузер не найден.</string>
-    <string name="action_save_note">Сохранить</string>
+    <string name="action_save_note">Сохранить заметку</string>
     <string name="placeholder_add_note">Добавить заметку…</string>
     <string name="label_dict">Словарь</string>
     <string name="label_speak">Озвучить</string>
