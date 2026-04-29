@@ -79,7 +79,7 @@
     <string name="dialog_delete_shelf_desc">Sind Sie sicher, dass Sie das Regal \'%1$s\' löschen möchten? Alle Bücher werden nach Unsortiert verschoben.</string>
     <string name="dialog_remove_from_shelf">Von Regal entfernen?</string>
     <string name="dialog_delete_shelves">%1$s löschen?</string>
-    <string name="dialog_delete_shelves_desc">Sind Sie sicher, dass Sie das %1$d ausgewählt %2$s löschen möchten? Alle enthaltenen Bücher werden nach Unsortiert verschoben.</string>
+    <string name="dialog_delete_shelves_desc">Sind Sie sicher, dass Sie %1$d %2$s löschen möchten? Alle enthaltenen Bücher werden nach Unsortiert verschoben.</string>
     <string name="sync_local_folders">Lokale Ordner synchronisieren</string>
     <string name="sync_folders_desc">Verbinden Sie lokale Ordner, um eine Live-Bibliothek zu erstellen. Episteme wird Dateien überwachen und den Fortschritt synchronisieren.</string>
     <string name="fab_add_folder">Ordner hinzufügen</string>
