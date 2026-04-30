@@ -73,7 +73,7 @@
     <string name="drawer_backup_local_folders">Синхронізація локальних папок</string>
     <string name="drawer_backup_desc">Завантажити до Google Drive.</string>
     <string name="drawer_custom_fonts">Власні шрифти</string>
-    <string name="drawer_help_feedback">Help &amp; Feedback</string>
+    <string name="drawer_help_feedback">Допомога й зворотний зв\'язок</string>
     <string name="drawer_sign_out">Вихід</string>
     <string name="options_recent_limit">Обмеження нещодавніх</string>
     <string name="options_no_limit">Безлімітний</string>
@@ -222,4 +222,16 @@
     <string name="dialog_unlock_pro">Розблокуйте Episteme Pro</string>
     <string name="dialog_unlock_pro_desc">Синхронізація між пристроями є функцією Pro. Розблокуйте всі функції Pro за допомогою однієї одноразової покупки.</string>
     <string name="action_upgrade">Оновити</string>
+    <string name="filter_tags">Теги: %1$s</string>
+    <string name="ocr_language_latin">Англійська, Іспанська, Французька тощо.</string>
+    <string name="ocr_language_devanagari">Гінді, Маратхі, Санскрит + Англійська</string>
+    <string name="ocr_language_chinese">Китайська + Англійська</string>
+    <string name="ocr_language_japanese">Японська + Англіййська</string>
+    <string name="ocr_language_korean">Корейська + Англійська</string>
+    <string name="msg_page_unavailable">Сторінка недоступна</string>
+    <string name="default_document_title">Документ</string>
+    <string name="generated_author">Створено</string>
+    <string name="reflow_display_name_format">%1$s (Перегляд тексту)</string>
+    <string name="reflow_title_format">%1$s (Адаптивний вигляд)</string>
+    <string name="action_add_edit">Додати / Редагувати</string>
 </resources>
