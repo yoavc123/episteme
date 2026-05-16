@@ -28,6 +28,17 @@ import kotlin.test.assertTrue
 class ReaderHtmlDocumentBuilderTest {
 
     @Test
+    fun `page document writes right alignment reader css variable`() {
+        val html = ReaderHtmlDocumentBuilder.pageDocument(
+            book = repeatedWordBook("alpha beta"),
+            page = ReaderPage(0, 0, "One", "alpha beta", 0, 10),
+            settings = ReaderSettings(textAlign = SharedReaderTextAlign.RIGHT)
+        )
+
+        assertTrue(html.contains("--reader-align: right;"))
+    }
+
+    @Test
     fun `page document renders only the highlighted occurrence from locator offsets`() {
         val text = "alpha beta alpha beta"
         val page = ReaderPage(
@@ -321,11 +332,14 @@ class ReaderHtmlDocumentBuilderTest {
 
         assertTrue(html.contains("function scheduleMenuFromSelection()"))
         assertTrue(html.contains("selectionAnchorRect(selection)"))
+        assertTrue(html.contains("selectionMenuCandidate"))
+        assertTrue(html.contains("overlapAreaWithSelection"))
         assertTrue(html.contains("if (selectionPointerDown || activeSelectionHandle) return;"))
         assertTrue(html.contains("rangeBoundaryRect(range.startContainer"))
         assertTrue(html.contains("document.addEventListener('selectionchange'"))
         assertTrue(html.contains("document.addEventListener('pointerdown'"))
         assertTrue(html.contains("document.addEventListener('mouseup'"))
+        assertTrue(html.contains("document.addEventListener('touchend'"))
         assertTrue(html.contains("document.addEventListener('contextmenu'"))
     }
 

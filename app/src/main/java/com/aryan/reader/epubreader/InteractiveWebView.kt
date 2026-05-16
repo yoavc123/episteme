@@ -33,6 +33,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.widget.PopupMenu
+import android.webkit.JavascriptInterface
 import org.json.JSONObject
 
 enum class DragOperation { NONE, PULLING_DOWN_FROM_TOP, PULLING_UP_FROM_BOTTOM }
@@ -52,6 +53,9 @@ class InteractiveWebView(
 
     companion object {
         private const val DRAG_SENSITIVITY_PX = 20f
+        private const val SELECTION_MENU_INITIAL_DELAY_MS = 120L
+        private const val SELECTION_MENU_RETRY_DELAY_MS = 140L
+        private const val SELECTION_MENU_RETRY_COUNT = 8
     }
 
     private var startY: Float = 0f
@@ -60,16 +64,26 @@ class InteractiveWebView(
 
     private val scrollStopHandler = Handler(Looper.getMainLooper())
     private var scrollStopRunnable: Runnable? = null
+    private var selectionMenuRunnable: Runnable? = null
     private var activeSelectionActionMode: ActionMode? = null
+    private var selectionMenuShownForActiveMode = false
+
+    init {
+        addJavascriptInterface(ReaderSelectionBridge(), "ReaderSelectionBridge")
+    }
 
     private fun clearPendingSelectionWork() {
         scrollStopRunnable?.let { scrollStopHandler.removeCallbacks(it) }
         scrollStopRunnable = null
+        selectionMenuRunnable?.let { scrollStopHandler.removeCallbacks(it) }
+        selectionMenuRunnable = null
     }
 
-    private fun startLocalSelectionActionMode(): ActionMode {
+    private fun startLocalSelectionActionMode(scheduleMenu: Boolean = true): ActionMode {
         activeSelectionActionMode?.let { existingMode ->
-            showCustomSelectionMenuFromCurrentSelection(existingMode)
+            if (scheduleMenu) {
+                scheduleCustomSelectionMenuFromCurrentSelection(existingMode)
+            }
             return existingMode
         }
 
@@ -78,10 +92,14 @@ class InteractiveWebView(
             if (activeSelectionActionMode === localMode) {
                 activeSelectionActionMode = null
             }
+            selectionMenuShownForActiveMode = false
             onHideCustomSelectionMenu()
         }
+        selectionMenuShownForActiveMode = false
         activeSelectionActionMode = localMode
-        showCustomSelectionMenuFromCurrentSelection(localMode)
+        if (scheduleMenu) {
+            scheduleCustomSelectionMenuFromCurrentSelection(localMode)
+        }
         return localMode
     }
 
@@ -90,7 +108,56 @@ class InteractiveWebView(
         activeSelectionActionMode = null
     }
 
-    private fun showCustomSelectionMenuFromCurrentSelection(mode: ActionMode) {
+    private fun scheduleCustomSelectionMenuFromCurrentSelection(
+        mode: ActionMode,
+        delayMs: Long = SELECTION_MENU_INITIAL_DELAY_MS,
+        remainingRetries: Int = SELECTION_MENU_RETRY_COUNT
+    ) {
+        selectionMenuRunnable?.let { scrollStopHandler.removeCallbacks(it) }
+        selectionMenuRunnable = Runnable {
+            selectionMenuRunnable = null
+            showCustomSelectionMenuFromCurrentSelection(mode, remainingRetries)
+        }
+        scrollStopHandler.postDelayed(selectionMenuRunnable!!, delayMs)
+    }
+
+    private fun scheduleSelectionActionModeRefreshAfterTouch(
+        delayMs: Long = SELECTION_MENU_INITIAL_DELAY_MS,
+        remainingRetries: Int = SELECTION_MENU_RETRY_COUNT
+    ) {
+        selectionMenuRunnable?.let { scrollStopHandler.removeCallbacks(it) }
+        selectionMenuRunnable = Runnable {
+            selectionMenuRunnable = null
+            activeSelectionActionMode?.let { mode ->
+                showCustomSelectionMenuFromCurrentSelection(mode, SELECTION_MENU_RETRY_COUNT)
+                return@Runnable
+            }
+            evaluateJavascript("(function() { var s = window.getSelection && window.getSelection(); return s ? s.toString().trim() : ''; })();") { result ->
+                val selectedText = result?.removeSurrounding("\"")
+                if (!selectedText.isNullOrBlank() && activeSelectionActionMode == null) {
+                    Timber.d("CustomSelection: selection exists after touch-up. Starting local action mode.")
+                    startLocalSelectionActionMode()
+                } else {
+                    activeSelectionActionMode?.let { mode ->
+                        showCustomSelectionMenuFromCurrentSelection(mode, SELECTION_MENU_RETRY_COUNT)
+                        return@evaluateJavascript
+                    }
+                    if (remainingRetries > 0) {
+                        scheduleSelectionActionModeRefreshAfterTouch(
+                            delayMs = SELECTION_MENU_RETRY_DELAY_MS,
+                            remainingRetries = remainingRetries - 1
+                        )
+                    }
+                }
+            }
+        }
+        scrollStopHandler.postDelayed(selectionMenuRunnable!!, delayMs)
+    }
+
+    private fun showCustomSelectionMenuFromCurrentSelection(
+        mode: ActionMode,
+        remainingRetries: Int
+    ) {
         val jsToGetSelectionDetails = """
             (function() {
                 var selection = window.getSelection();
@@ -99,20 +166,44 @@ class InteractiveWebView(
                     return null;
                 }
                 var range = selection.getRangeAt(0);
-                var rect = range.getBoundingClientRect();
-
-                // If getBoundingClientRect returns all zeros, try getClientRects()
-                if (rect.width === 0 && rect.height === 0 && rect.top === 0 && rect.left === 0) {
-                    var clientRects = range.getClientRects();
-                    if (clientRects.length > 0) {
-                        rect = clientRects[0]; // Use the first rect
-                    } else {
-                        return null; // No valid rect found
+                var viewportLeft = 0;
+                var viewportTop = 0;
+                var viewportRight = window.innerWidth || document.documentElement.clientWidth || 0;
+                var viewportBottom = window.innerHeight || document.documentElement.clientHeight || 0;
+                var rects = Array.prototype.slice.call(range.getClientRects ? range.getClientRects() : []);
+                rects = rects.filter(function(rect) {
+                    if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+                    return rect.right >= viewportLeft &&
+                        rect.left <= viewportRight &&
+                        rect.bottom >= viewportTop &&
+                        rect.top <= viewportBottom;
+                });
+                var rect = null;
+                if (rects.length > 0) {
+                    var firstRect = rects[0];
+                    rect = rects.reduce(function(acc, item) {
+                        return {
+                            left: Math.min(acc.left, item.left),
+                            top: Math.min(acc.top, item.top),
+                            right: Math.max(acc.right, item.right),
+                            bottom: Math.max(acc.bottom, item.bottom)
+                        };
+                    }, {
+                        left: firstRect.left,
+                        top: firstRect.top,
+                        right: firstRect.right,
+                        bottom: firstRect.bottom
+                    });
+                    rect.width = rect.right - rect.left;
+                    rect.height = rect.bottom - rect.top;
+                } else {
+                    rect = range.getBoundingClientRect ? range.getBoundingClientRect() : null;
+                    if (!rect || rect.width <= 0 || rect.height <= 0) {
+                        return null;
                     }
                 }
 
-                // Ensure the rect has some dimension
-                if (rect.width === 0 && rect.height === 0) {
+                if (rect.width <= 0 || rect.height <= 0) {
                     return null;
                 }
 
@@ -129,13 +220,28 @@ class InteractiveWebView(
         """.trimIndent()
 
         evaluateJavascript(jsToGetSelectionDetails) { jsonResult ->
+            fun retryOrFinish(message: String) {
+                Timber.d(message)
+                if (selectionMenuShownForActiveMode) {
+                    return
+                }
+                if (activeSelectionActionMode === mode && remainingRetries > 0) {
+                    scheduleCustomSelectionMenuFromCurrentSelection(
+                        mode = mode,
+                        delayMs = SELECTION_MENU_RETRY_DELAY_MS,
+                        remainingRetries = remainingRetries - 1
+                    )
+                } else {
+                    mode.finish()
+                }
+            }
+
             if (activeSelectionActionMode !== mode) {
                 return@evaluateJavascript
             }
 
             if (jsonResult == null || jsonResult == "null" || jsonResult.equals("\"null\"", ignoreCase = true)) {
-                Timber.d("CustomSelection: JS returned null or invalid for selection details.")
-                mode.finish()
+                retryOrFinish("CustomSelection: JS returned null or invalid for selection details. Retries left: $remainingRetries")
                 return@evaluateJavascript
             }
 
@@ -148,8 +254,7 @@ class InteractiveWebView(
                 val selectedText = selectionDetails.getString("text")
 
                 if (selectedText.isBlank()) {
-                    Timber.d("CustomSelection: Selected text is blank after JS processing.")
-                    mode.finish()
+                    retryOrFinish("CustomSelection: Selected text is blank after JS processing. Retries left: $remainingRetries")
                     return@evaluateJavascript
                 }
 
@@ -161,8 +266,7 @@ class InteractiveWebView(
                 val jsHeight = selectionDetails.getDouble("height")
 
                 if (jsWidth == 0.0 && jsHeight == 0.0) {
-                    Timber.d("CustomSelection: JS returned a zero-area rect (width=0, height=0). Left: $jsLeft, Top: $jsTop")
-                    mode.finish()
+                    retryOrFinish("CustomSelection: JS returned a zero-area rect. Retries left: $remainingRetries. Left: $jsLeft, Top: $jsTop")
                     return@evaluateJavascript
                 }
 
@@ -181,20 +285,85 @@ class InteractiveWebView(
                 )
 
                 if (selectionRectScreen.isEmpty || selectionRectScreen.width() <= 0 || selectionRectScreen.height() <= 0) {
-                    Timber.d("CustomSelection: Calculated selectionRectScreen is empty or invalid: $selectionRectScreen. JS LTRB: $jsLeft, $jsTop, $jsRight, $jsBottom. WebViewLoc: $webViewX, $webViewY")
-                    mode.finish()
+                    retryOrFinish("CustomSelection: Calculated selectionRectScreen is empty or invalid: $selectionRectScreen. Retries left: $remainingRetries. JS LTRB: $jsLeft, $jsTop, $jsRight, $jsBottom. WebViewLoc: $webViewX, $webViewY")
                     return@evaluateJavascript
                 }
 
                 Timber.d("CustomSelection: Selected text: '$selectedText', JS Rect: {L:$jsLeft, T:$jsTop, R:$jsRight, B:$jsBottom}, Screen Rect: $selectionRectScreen")
 
+                selectionMenuShownForActiveMode = true
                 onShowCustomSelectionMenu(selectedText, selectionRectScreen) {
                     mode.finish()
                 }
             } catch (e: Exception) {
                 Timber.e(e, "CustomSelection: Error parsing selection details from JS: '$jsonResult', raw: '$jsonResult'")
+                if (selectionMenuShownForActiveMode) {
+                    return@evaluateJavascript
+                }
+                if (remainingRetries > 0) {
+                    scheduleCustomSelectionMenuFromCurrentSelection(
+                        mode = mode,
+                        delayMs = SELECTION_MENU_RETRY_DELAY_MS,
+                        remainingRetries = remainingRetries - 1
+                    )
+                } else {
+                    mode.finish()
+                }
+            }
+        }
+    }
+
+    private fun showCustomSelectionMenuFromSelectionDetailsJson(
+        mode: ActionMode,
+        rawJson: String
+    ) {
+        if (activeSelectionActionMode !== mode) return
+        selectionMenuRunnable?.let { scrollStopHandler.removeCallbacks(it) }
+        selectionMenuRunnable = null
+
+        try {
+            val selectionDetails = JSONObject(rawJson)
+            val selectedText = selectionDetails.getString("text")
+            if (selectedText.isBlank()) {
+                return
+            }
+
+            val jsLeft = selectionDetails.getDouble("left")
+            val jsTop = selectionDetails.getDouble("top")
+            val jsRight = selectionDetails.getDouble("right")
+            val jsBottom = selectionDetails.getDouble("bottom")
+            val jsWidth = selectionDetails.getDouble("width")
+            val jsHeight = selectionDetails.getDouble("height")
+
+            if (jsWidth <= 0.0 || jsHeight <= 0.0) {
+                return
+            }
+
+            val density = context.resources.displayMetrics.density
+            val webViewLocation = IntArray(2)
+            getLocationOnScreen(webViewLocation)
+            val webViewX = webViewLocation[0]
+            val webViewY = webViewLocation[1]
+
+            val selectionRectScreen = Rect(
+                (webViewX + jsLeft * density).toInt(),
+                (webViewY + jsTop * density).toInt(),
+                (webViewX + jsRight * density).toInt(),
+                (webViewY + jsBottom * density).toInt()
+            )
+
+            if (selectionRectScreen.isEmpty || selectionRectScreen.width() <= 0 || selectionRectScreen.height() <= 0) {
+                Timber.d("CustomSelection: Bridge supplied invalid rect: $selectionRectScreen. JS LTRB: $jsLeft, $jsTop, $jsRight, $jsBottom")
+                return
+            }
+
+            Timber.d("CustomSelection: Bridge selected text '$selectedText', Screen Rect: $selectionRectScreen")
+            selectionMenuShownForActiveMode = true
+            onShowCustomSelectionMenu(selectedText, selectionRectScreen) {
                 mode.finish()
             }
+        } catch (e: Exception) {
+            Timber.e(e, "CustomSelection: Error parsing bridge selection details: '$rawJson'")
         }
     }
 
@@ -292,6 +461,8 @@ class InteractiveWebView(
                 if (wasDragging) {
                     Timber.d("Drag operation ended, enabling text selection.")
                     evaluateJavascript("javascript:if(window.setTextSelectionEnabled) window.setTextSelectionEnabled(true);", null)
+                } else if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    scheduleSelectionActionModeRefreshAfterTouch()
                 }
             }
         }
@@ -306,12 +477,14 @@ class InteractiveWebView(
 
     // MIUI can crash inside FloatingToolbar when WindowInsets are null, so WebView
     // selections use the app's Compose popup without starting the platform toolbar.
+    override fun startActionMode(originalCallback: ActionMode.Callback): ActionMode? {
+        Timber.d("CustomSelection: handling primary action mode locally.")
+        return startLocalSelectionActionMode()
+    }
+
     override fun startActionMode(originalCallback: ActionMode.Callback, type: Int): ActionMode? {
-        if (type == ActionMode.TYPE_FLOATING) {
-            Timber.d("CustomSelection: handling floating action mode locally.")
-            return startLocalSelectionActionMode()
-        }
-        return super.startActionMode(originalCallback, type)
+        Timber.d("CustomSelection: handling action mode locally. Type: $type")
+        return startLocalSelectionActionMode()
     }
 
     override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
@@ -391,5 +564,15 @@ class InteractiveWebView(
         override fun getCustomView(): View? = customView
 
         override fun getMenuInflater(): MenuInflater = menuInflater
+    }
+
+    private inner class ReaderSelectionBridge {
+        @JavascriptInterface
+        fun onSelectionChanged(selectionJson: String) {
+            post {
+                val mode = startLocalSelectionActionMode(scheduleMenu = false)
+                showCustomSelectionMenuFromSelectionDetailsJson(mode, selectionJson)
+            }
+        }
     }
 }

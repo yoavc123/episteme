@@ -707,12 +707,15 @@
     <string name="options_export_logs_last_lines">Экспорт %1$d последних строк журнала</string>
     <string name="dialog_strict_file_filter_title">Строгий фильтр файлов</string>
     <string name="dialog_strict_file_filter_desc">Если вы включите эту функцию, некоторые поддерживаемые типы файлов, такие как AZW3, CB7 и FB2, могут не отображаться в зависимости от используемого вами файлового менеджера.\n\nВы уверены, что хотите включить этот фильтр?</string>
+    <string name="language_system_default">Системный язык</string>
+    <string name="language_english">Английский</string>
     <string name="language_english_default">Английский (по умолчанию)</string>
     <string name="language_arabic">Арабский</string>
     <string name="language_german">Немецкий</string>
     <string name="language_turkish">Турецкий</string>
     <string name="language_french">Французский</string>
     <string name="language_russian">Русский</string>
+    <string name="language_spanish">Испанский</string>
     <string name="app_theme_title">Тема приложения</string>
     <string name="app_theme_appearance">Внешний вид</string>
     <string name="app_theme_contrast">Контрастность</string>

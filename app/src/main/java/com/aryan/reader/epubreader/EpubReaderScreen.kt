@@ -253,6 +253,15 @@ private const val TTS_LOCATE_REASON_OVERLAY = "overlay"
 
 private const val TAG_LINK_NAV = "LINK_NAV"
 private const val TAG_STABLE_PAGE_NAV = "StablePageNav"
+private const val TAG_PAGINATED_HIGHLIGHT_DIAG = "PaginatedHighlightDiag"
+
+private fun epubHighlightDiagSnippet(text: String, maxLength: Int = 80): String {
+    return text
+        .replace('\n', ' ')
+        .replace('\r', ' ')
+        .replace('\t', ' ')
+        .take(maxLength)
+}
 
 private fun View.bottomRoundedCornerRadiusPx(): Int {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return 0
@@ -303,7 +312,7 @@ private fun loadHiddenTools(context: Context): Set<String> {
     val savedHiddenTools = prefs.getStringSet(HIDDEN_TOOLS_KEY, emptySet()).orEmpty()
     val defaultsVersion = prefs.getInt(HIDDEN_TOOLS_DEFAULTS_VERSION_KEY, 0)
     if (defaultsVersion < HIDDEN_TOOLS_DEFAULTS_VERSION) {
-        val migratedHiddenTools = savedHiddenTools + ReaderTool.SCREEN_ORIENTATION.name
+        val migratedHiddenTools = savedHiddenTools + defaultReaderHiddenTools()
         prefs.edit {
             putStringSet(HIDDEN_TOOLS_KEY, migratedHiddenTools)
             putInt(HIDDEN_TOOLS_DEFAULTS_VERSION_KEY, HIDDEN_TOOLS_DEFAULTS_VERSION)
@@ -325,7 +334,7 @@ private fun loadToolOrder(context: Context): List<ReaderTool> {
         ?.filter { it.isNotBlank() }
         ?.mapNotNull { name -> ReaderTool.entries.firstOrNull { it.name == name } }
         .orEmpty()
-    return (savedTools + ReaderTool.entries.filterNot { it in savedTools }).distinct()
+    return (savedTools + defaultReaderToolOrder().filterNot { it in savedTools }).distinct()
 }
 
 private fun saveBottomTools(context: Context, bottomTools: Set<String>) {
@@ -337,8 +346,8 @@ private fun loadBottomTools(context: Context): Set<String> {
     val prefs = context.getSharedPreferences("reader_prefs", Context.MODE_PRIVATE)
     return prefs.getStringSet(
         BOTTOM_TOOLS_KEY,
-        ReaderTool.entries.filter { it.category == "Bottom Bar" }.map { it.name }.toSet()
-    ) ?: ReaderTool.entries.filter { it.category == "Bottom Bar" }.map { it.name }.toSet()
+        defaultReaderBottomTools()
+    ) ?: defaultReaderBottomTools()
 }
 
 private fun saveKeepScreenOn(context: Context, isEnabled: Boolean) {
@@ -2413,13 +2422,13 @@ fun EpubReaderHost(
         val targetPageIndex = pageIndex
         val targetCfi = cfi.orEmpty()
         if (targetPageIndex != null && (targetCfi.isBlank() || targetCfi.startsWith("android-page:"))) {
-            return "Page ${targetPageIndex + 1}"
+            return context.getString(R.string.pdf_page_short, targetPageIndex + 1)
         }
         val chapter = chapterIndex
         return if (chapter != null) {
-            chapters.getOrNull(chapter)?.title?.takeIf { it.isNotBlank() } ?: "Chapter ${chapter + 1}"
+            chapters.getOrNull(chapter)?.title?.takeIf { it.isNotBlank() } ?: context.getString(R.string.chapter_number_format, chapter + 1)
         } else {
-            "Location"
+            context.getString(R.string.location_generic)
         }
     }
 
@@ -3262,7 +3271,7 @@ fun EpubReaderHost(
                             } ?: run {
                                 isSummarizationLoading = false
                                 summarizationResult =
-                                    SummarizationResult(error = "WebView not available.")
+                                    SummarizationResult(error = context.getString(R.string.error_webview_not_available))
                             }
                         }
                     }
@@ -3333,7 +3342,7 @@ fun EpubReaderHost(
                                             if (fullSummary.isNotBlank()) {
                                                 val chapterTitle =
                                                     chapters.getOrNull(chapterIndex)?.title
-                                                        ?: "Chapter ${chapterIndex + 1}"
+                                                        ?: context.getString(R.string.chapter_number_format, chapterIndex + 1)
                                                 summaryCacheManager.saveSummary(
                                                     epubBook.title,
                                                     chapterIndex,
@@ -3344,12 +3353,12 @@ fun EpubReaderHost(
                                         })
                                 } else {
                                     summarizationResult =
-                                        SummarizationResult(error = "Could not get chapter content.")
+                                        SummarizationResult(error = context.getString(R.string.error_could_not_get_chapter_content))
                                     isSummarizationLoading = false
                                 }
                             } else {
                                 summarizationResult =
-                                    SummarizationResult(error = "Could not determine current chapter.")
+                                    SummarizationResult(error = context.getString(R.string.error_could_not_determine_chapter))
                                 isSummarizationLoading = false
                             }
                         }
@@ -4207,7 +4216,7 @@ fun EpubReaderHost(
                                                             isSummarizationLoading = false
                                                             val fullSummary = finalSummaryBuilder.toString()
                                                             if (fullSummary.isNotBlank()) {
-                                                                val chapterTitle = chapters.getOrNull(chapterIndexToSave)?.title ?: "Chapter ${chapterIndexToSave + 1}"
+                                                    val chapterTitle = chapters.getOrNull(chapterIndexToSave)?.title ?: context.getString(R.string.chapter_number_format, chapterIndexToSave + 1)
                                                                 summaryCacheManager.saveSummary(bookTitleToSave, chapterIndexToSave, chapterTitle, fullSummary)
                                                             }
                                                         }
@@ -4362,7 +4371,7 @@ fun EpubReaderHost(
                                                 )
                                                 val chapterTitle =
                                                     epubBook.chapters.getOrNull(currentChapterIndex)?.title
-                                                        ?: "Unknown Chapter"
+                                                        ?: context.getString(R.string.unknown_chapter)
                                                 val newBookmark = Bookmark(
                                                     cfi = cfi,
                                                     chapterTitle = chapterTitle,
@@ -4571,14 +4580,32 @@ fun EpubReaderHost(
                                     highlight.chapterIndex in (currentChapter - 1)..(currentChapter + 1)
                                 },
                                 onHighlightCreated = { cfi, text, colorId ->
+                                    val chapterIndex = currentChapterInPaginatedMode ?: 0
+                                    Timber.tag(TAG_PAGINATED_HIGHLIGHT_DIAG).d(
+                                        "persist_request cfi=$cfi colorId=$colorId chapter=$chapterIndex " +
+                                            "existingCount=${userHighlights.size} textLen=${text.length} " +
+                                            "text='${epubHighlightDiagSnippet(text)}'"
+                                    )
                                     Timber.d("EpubReaderScreen: onHighlightCreated. CFI: $cfi")
                                     val color = HighlightColor.entries.find { it.id == colorId } ?: HighlightColor.YELLOW
                                     val finalCfi = processAndAddHighlight(
                                         newCfi = cfi,
                                         newText = text,
                                         newColor = color,
-                                        chapterIndex = currentChapterInPaginatedMode ?: 0,
+                                        chapterIndex = chapterIndex,
                                         currentList = userHighlights
+                                    )
+                                    val savedHighlight = userHighlights.find {
+                                        it.chapterIndex == chapterIndex && it.cfi == finalCfi
+                                    }
+                                    Timber.tag(TAG_PAGINATED_HIGHLIGHT_DIAG).d(
+                                        "persist_result finalCfi=$finalCfi chapter=$chapterIndex " +
+                                            "savedId=${savedHighlight?.id} totalCount=${userHighlights.size} " +
+                                            "matchingCfiCount=${userHighlights.count { it.chapterIndex == chapterIndex && it.cfi == finalCfi }} " +
+                                            "locatorStart=${savedHighlight?.locator?.startOffset} " +
+                                            "locatorEnd=${savedHighlight?.locator?.endOffset} " +
+                                            "locatorPage=${savedHighlight?.locator?.pageIndex} " +
+                                            "locatorCfi=${savedHighlight?.locator?.cfi}"
                                     )
                                     if (pendingNoteForNewHighlight) {
                                         pendingNoteForNewHighlight = false
@@ -4616,9 +4643,24 @@ fun EpubReaderHost(
                                     )?.let { recordEpubJump(it) }
                                 },
                                 onHighlightDeleted = { cfi ->
+                                    val beforeCount = userHighlights.size
                                     val toRemove = userHighlights.find { it.cfi == cfi }
                                     if (toRemove != null) {
+                                        Timber.tag(TAG_PAGINATED_HIGHLIGHT_DIAG).d(
+                                            "delete_request cfi=$cfi matchedId=${toRemove.id} " +
+                                                "matchedChapter=${toRemove.chapterIndex} beforeCount=$beforeCount " +
+                                                "locatorStart=${toRemove.locator.startOffset} " +
+                                                "locatorEnd=${toRemove.locator.endOffset}"
+                                        )
                                         userHighlights.remove(toRemove)
+                                        Timber.tag(TAG_PAGINATED_HIGHLIGHT_DIAG).d(
+                                            "delete_result cfi=$cfi removedId=${toRemove.id} " +
+                                                "afterCount=${userHighlights.size}"
+                                        )
+                                    } else {
+                                        Timber.tag(TAG_PAGINATED_HIGHLIGHT_DIAG).w(
+                                            "delete_request cfi=$cfi matchedId=null beforeCount=$beforeCount"
+                                        )
                                     }
                                 }
                             )
@@ -4745,7 +4787,7 @@ fun EpubReaderHost(
                                     val finalCfi = if (offset > 0) "$baseCfi:$offset" else baseCfi
 
                                     val chapterIndex = paginator?.findChapterIndexForPage(paginatedPagerState.currentPage)
-                                    val chapterTitle = chapterIndex?.let { epubBook.chapters.getOrNull(it)?.title } ?: "Unknown Chapter"
+                                    val chapterTitle = chapterIndex?.let { epubBook.chapters.getOrNull(it)?.title } ?: context.getString(R.string.unknown_chapter)
                                     val snippet = (targetBlockForBookmark as? TextContentBlock)?.content?.text?.take(150) ?: ""
 
                                     val pageInChapter: Int?
@@ -4862,7 +4904,7 @@ fun EpubReaderHost(
                         val textToShow = if (bookPaginator != null && chapterIndex != null) {
                             val chapterTitle =
                                 chapters.getOrNull(chapterIndex)?.title?.take(30)?.trim()
-                                    ?: "Chapter"
+                                    ?: stringResource(R.string.chapter)
                             val totalPagesInChapter = bookPaginator.chapterPageCounts[chapterIndex]
                             val chapterStartPage = bookPaginator.chapterStartPageIndices[chapterIndex]
 
@@ -4874,7 +4916,7 @@ fun EpubReaderHost(
                                 chapterTitle
                             }
                         } else {
-                            "Page ${paginatedPagerState.currentPage + 1}/${paginatedPagerState.pageCount}"
+                            stringResource(R.string.page_number_of_total, paginatedPagerState.currentPage + 1, paginatedPagerState.pageCount)
                         }
 
                         Text(
@@ -5568,7 +5610,7 @@ fun EpubReaderHost(
                     onVerticalMarginChange = { currentVerticalMargin = it },
                     currentFont = currentFontFamily,
                     currentCustomFontName = if(currentCustomFontPath != null) {
-                        customFonts.find { it.path == currentCustomFontPath }?.displayName ?: "Custom Font"
+                        customFonts.find { it.path == currentCustomFontPath }?.displayName ?: stringResource(R.string.custom_font_fallback)
                     } else null,
                     onFontOptionClick = { showFontSelectionSheet = true },
                     currentTextAlign = currentTextAlign,
@@ -5649,7 +5691,7 @@ fun EpubReaderHost(
                     credits = credits,
                     isProUser = isProUser,
                     currentChapterIndex = effectiveCurrentChapterIndex,
-                    chapterTitle = chapters.getOrNull(effectiveCurrentChapterIndex)?.title ?: "Chapter ${effectiveCurrentChapterIndex + 1}",
+                    chapterTitle = chapters.getOrNull(effectiveCurrentChapterIndex)?.title ?: context.getString(R.string.chapter_number_format, effectiveCurrentChapterIndex + 1),
                     showAiHubSheet = showAiHubSheet,
                     onGenerateSummary = handleGenerateSummary,
                     onGenerateRecap = handleGenerateRecap,

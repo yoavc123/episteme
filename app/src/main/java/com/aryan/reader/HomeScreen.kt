@@ -1049,7 +1049,7 @@ fun DefaultTopAppBar(
         }
     }, actions = {
         IconButton(onClick = onSettingsClick) {
-            Icon(Icons.Default.Settings, contentDescription = "Settings")
+            Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
         }
         Box {
             IconButton(onClick = onAppThemeClick) {
@@ -1139,7 +1139,7 @@ fun DefaultTopAppBar(
 
                 if (!BuildConfig.IS_OFFLINE) {
                     DropdownMenuItem(
-                        text = { Text(if (hideReaderAiFeatures) "Show AI in reader" else "Hide AI in reader") },
+                        text = { Text(stringResource(if (hideReaderAiFeatures) R.string.options_show_ai_in_reader else R.string.options_hide_ai_in_reader)) },
                         onClick = {
                             onToggleHideReaderAi()
                             hideReaderAiFeatures = !hideReaderAiFeatures
@@ -1374,7 +1374,7 @@ private fun AppDrawerContent(
 
             NavigationDrawerItem(
                 icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                label = { Text("Settings") },
+                label = { Text(stringResource(R.string.settings)) },
                 selected = false,
                 onClick = onSettingsClick,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -1391,7 +1391,7 @@ private fun AppDrawerContent(
             if (isOss && !BuildConfig.IS_OFFLINE) {
                 NavigationDrawerItem(
                     icon = { Icon(painterResource(id = R.drawable.ai), contentDescription = null) },
-                    label = { Text("AI keys and models") },
+                    label = { Text(stringResource(R.string.ai_settings_title)) },
                     selected = false,
                     onClick = onAiSettingsClick,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -1855,7 +1855,7 @@ fun AppThemeBottomSheet(
             Spacer(Modifier.height(24.dp))
 
             if (uiState.appThemeMode == AppThemeMode.SYSTEM) {
-                Text("${stringResource(R.string.app_theme_text_brightness)} (Light)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.app_theme_text_brightness_light), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier
@@ -1877,7 +1877,7 @@ fun AppThemeBottomSheet(
 
                 Spacer(Modifier.height(16.dp))
 
-                Text("${stringResource(R.string.app_theme_text_brightness)} (Dark)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.app_theme_text_brightness_dark), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier
@@ -2184,38 +2184,30 @@ fun CreateAppThemeDialog(
 @Composable
 fun LanguageSelectionDialog(onDismiss: () -> Unit) {
     val currentLocales = AppCompatDelegate.getApplicationLocales()
-    val currentTag = if (!currentLocales.isEmpty) currentLocales.get(0)?.language ?: "en" else "en"
-
-    val languages = listOf(
-        "en" to R.string.language_english_default,
-        "ar" to R.string.language_arabic,
-        "de" to R.string.language_german,
-        "tr" to R.string.language_turkish,
-        "fr" to R.string.language_french,
-        "ru" to R.string.language_russian
-    )
+    val currentTag = if (!currentLocales.isEmpty) currentLocales.get(0)?.toLanguageTag() else null
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.options_language)) },
         text = {
             Column {
-                languages.forEach { (tag, nameRes) ->
+                appLanguageSelectionOptions.forEach { language ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                AppCompatDelegate.setApplicationLocales(
+                                val locales = language.tag?.let { tag ->
                                     LocaleListCompat.forLanguageTags(tag)
-                                )
+                                } ?: LocaleListCompat.getEmptyLocaleList()
+                                AppCompatDelegate.setApplicationLocales(locales)
                                 onDismiss()
                             }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(selected = currentTag == tag, onClick = null)
+                        RadioButton(selected = currentTag == language.tag, onClick = null)
                         Spacer(modifier = Modifier.width(16.dp))
-                        Text(stringResource(nameRes))
+                        Text(stringResource(language.labelRes))
                     }
                 }
             }
