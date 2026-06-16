@@ -106,6 +106,10 @@
     <string name="drawer_support_project">Support the Project</string>
     <string name="drawer_help_feedback">Help &amp; Feedback</string>
     <string name="drawer_sign_out">Sign Out</string>
+    <string name="provider_openai" translatable="false">OpenAI</string>
+    <string name="provider_deepgram" translatable="false">Deepgram</string>
+    <string name="ai_settings_transcription_backups">Transcription backup providers</string>
+    <string name="ai_settings_transcription_backups_offline">External transcription backups are hidden in offline builds. Local Whisper model import remains available in audio sync.</string>
 
     <!-- Top Bar Options -->
     <string name="options_recent_limit">Recent Files Limit</string>
@@ -1266,6 +1270,12 @@
     <string name="tts_active_engine">Active TTS Engine</string>
     <string name="tts_mode_cloud_ai">Cloud AI</string>
     <string name="tts_mode_device_native">Device Native</string>
+    <string name="tts_error_synced_audio_not_synthetic">Synced audio is played by the EPUB readaloud player, not synthetic TTS.</string>
+    <string name="tts_synced_audio_title">Synced book audio</string>
+    <string name="tts_synced_audio_available_desc">Use the real audio aligned to this EPUB instead of generated speech.</string>
+    <string name="tts_synced_audio_cta_desc">No synced audio is attached to this EPUB yet. Sync an audio file to create a readaloud EPUB.</string>
+    <string name="tts_synced_audio_start">Play synced audio</string>
+    <string name="tts_synced_audio_sync_cta">Sync audio for this book</string>
     <string name="tts_tab_cloud_voices">Cloud Voices</string>
     <string name="tts_tab_device_voices">Device Voices</string>
     <string name="tts_tab_cloud_cache">Cloud Cache</string>

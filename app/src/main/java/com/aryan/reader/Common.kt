@@ -181,6 +181,7 @@ import com.aryan.reader.tts.TtsPlaybackManager
 import com.aryan.reader.tts.formatBytes
 import com.aryan.reader.tts.loadTtsMode
 import com.aryan.reader.tts.rememberTtsController
+import com.aryan.reader.tts.syncedAudioTtsOptionModel
 import com.aryan.reader.tts.splitTextIntoChunks
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -233,6 +234,8 @@ private const val AI_PREFS_NAME = "ai_byok_prefs"
 private const val PREF_AI_HIDE_READER_FEATURES = "hide_reader_ai_features"
 private const val PREF_AI_GEMINI_KEY = "gemini_key"
 private const val PREF_AI_GROQ_KEY = "groq_key"
+private const val PREF_AI_OPENAI_KEY = "openai_key"
+private const val PREF_AI_DEEPGRAM_KEY = "deepgram_key"
 private const val PREF_AI_USE_ONE_MODEL = "use_one_model"
 private const val PREF_AI_MODEL_ALL = "model_all"
 private const val PREF_AI_MODEL_DEFINE = "model_define"
@@ -259,6 +262,8 @@ private fun aiProviderDisplayName(context: Context, provider: String): String {
     return when (provider) {
         "gemini" -> context.getString(R.string.provider_gemini)
         "groq" -> context.getString(R.string.provider_groq)
+        "openai" -> context.getString(R.string.provider_openai)
+        "deepgram" -> context.getString(R.string.provider_deepgram)
         else -> provider.replaceFirstChar { it.titlecase(Locale.ROOT) }
     }
 }
@@ -274,6 +279,8 @@ data class AiModelOption(
 data class AiByokSettings(
     val geminiKey: String = "",
     val groqKey: String = "",
+    val openAiKey: String = "",
+    val deepgramKey: String = "",
     val useOneModel: Boolean = true,
     val modelForAll: String = "",
     val defineModel: String = "",
@@ -360,6 +367,8 @@ fun loadAiByokSettings(context: Context): AiByokSettings {
     val settings = AiByokSettings(
         geminiKey = decryptAiSecret(prefs.getString(PREF_AI_GEMINI_KEY, "")),
         groqKey = decryptAiSecret(prefs.getString(PREF_AI_GROQ_KEY, "")),
+        openAiKey = decryptAiSecret(prefs.getString(PREF_AI_OPENAI_KEY, "")),
+        deepgramKey = decryptAiSecret(prefs.getString(PREF_AI_DEEPGRAM_KEY, "")),
         useOneModel = prefs.getBoolean(PREF_AI_USE_ONE_MODEL, true),
         modelForAll = prefs.getString(PREF_AI_MODEL_ALL, "") ?: "",
         defineModel = prefs.getString(PREF_AI_MODEL_DEFINE, "") ?: "",
@@ -369,8 +378,12 @@ fun loadAiByokSettings(context: Context): AiByokSettings {
     )
     val geminiStored = prefs.getString(PREF_AI_GEMINI_KEY, "").orEmpty()
     val groqStored = prefs.getString(PREF_AI_GROQ_KEY, "").orEmpty()
+    val openAiStored = prefs.getString(PREF_AI_OPENAI_KEY, "").orEmpty()
+    val deepgramStored = prefs.getString(PREF_AI_DEEPGRAM_KEY, "").orEmpty()
     if ((geminiStored.isNotBlank() && !geminiStored.startsWith(ENCRYPTION_PREFIX)) ||
-        (groqStored.isNotBlank() && !groqStored.startsWith(ENCRYPTION_PREFIX))
+        (groqStored.isNotBlank() && !groqStored.startsWith(ENCRYPTION_PREFIX)) ||
+        (openAiStored.isNotBlank() && !openAiStored.startsWith(ENCRYPTION_PREFIX)) ||
+        (deepgramStored.isNotBlank() && !deepgramStored.startsWith(ENCRYPTION_PREFIX))
     ) {
         saveAiByokSettings(context, settings)
     }
@@ -381,6 +394,8 @@ fun saveAiByokSettings(context: Context, settings: AiByokSettings) {
     context.aiPrefs().edit {
         putString(PREF_AI_GEMINI_KEY, encryptAiSecret(settings.geminiKey.trim()))
         putString(PREF_AI_GROQ_KEY, encryptAiSecret(settings.groqKey.trim()))
+        putString(PREF_AI_OPENAI_KEY, encryptAiSecret(settings.openAiKey.trim()))
+        putString(PREF_AI_DEEPGRAM_KEY, encryptAiSecret(settings.deepgramKey.trim()))
         putBoolean(PREF_AI_USE_ONE_MODEL, settings.useOneModel)
         putString(PREF_AI_MODEL_ALL, settings.modelForAll)
         putString(PREF_AI_MODEL_DEFINE, settings.defineModel)
@@ -395,6 +410,8 @@ fun saveAiByokKey(context: Context, provider: String, key: String) {
     val updated = when (provider) {
         "gemini" -> current.copy(geminiKey = key)
         "groq" -> current.copy(groqKey = key)
+        "openai" -> current.copy(openAiKey = key)
+        "deepgram" -> current.copy(deepgramKey = key)
         else -> current
     }
     saveAiByokSettings(context, updated)
@@ -410,6 +427,8 @@ fun maskedAiByokKey(context: Context, provider: String): String {
         when (provider) {
             "gemini" -> settings.geminiKey
             "groq" -> settings.groqKey
+            "openai" -> settings.openAiKey
+            "deepgram" -> settings.deepgramKey
             else -> ""
         }
     )
@@ -1726,7 +1745,11 @@ fun TtsSettingsSheet(
     onSpeakerChange: (String) -> Unit,
     isTtsActive: Boolean,
     getAuthToken: suspend () -> String?,
-    bookTitle: String
+    bookTitle: String,
+    syncedAudioEligible: Boolean = false,
+    syncedAudioAvailable: Boolean = false,
+    onStartSyncedAudio: () -> Unit = {},
+    onOpenAudioSync: () -> Unit = {}
 ) {
     if (!isVisible) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -1738,6 +1761,11 @@ fun TtsSettingsSheet(
         mutableIntStateOf(if (currentMode == TtsPlaybackManager.TtsMode.CLOUD && (!isOss || isOssCloudAvailable)) 0 else 1)
     }
     val scope = rememberCoroutineScope()
+    val syncedAudioOption = syncedAudioTtsOptionModel(
+        eligible = syncedAudioEligible,
+        available = syncedAudioAvailable,
+        isTtsActive = isTtsActive
+    )
     val samplePlayer = remember(context, scope) {
         SpeakerSamplePlayer(context, scope, getAuthToken = getAuthToken)
     }
@@ -1759,6 +1787,41 @@ fun TtsSettingsSheet(
                         Icon(Icons.Default.Stop, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
                         Spacer(Modifier.width(12.dp))
                         Text(stringResource(R.string.tts_stop_to_change_settings), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                }
+            }
+
+            if (syncedAudioOption.visible) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            stringResource(R.string.tts_synced_audio_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            stringResource(if (syncedAudioAvailable) R.string.tts_synced_audio_available_desc else R.string.tts_synced_audio_cta_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Button(
+                            onClick = {
+                                if (syncedAudioAvailable) {
+                                    onStartSyncedAudio()
+                                } else {
+                                    onOpenAudioSync()
+                                }
+                            },
+                            enabled = syncedAudioOption.canStartPlayback || syncedAudioOption.canOpenSync,
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text(stringResource(if (syncedAudioAvailable) R.string.tts_synced_audio_start else R.string.tts_synced_audio_sync_cta))
+                        }
                     }
                 }
             }

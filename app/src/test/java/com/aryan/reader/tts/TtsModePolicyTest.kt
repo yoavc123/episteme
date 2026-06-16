@@ -77,6 +77,19 @@ class TtsModePolicyTest {
     }
 
     @Test
+    fun `synced audio is not restored as synthetic tts default`() {
+        val mode = resolveTtsModeForBuild(
+            requestedModeName = TtsPlaybackManager.TtsMode.SYNCED.name,
+            isOfflineBuild = false,
+            isProBuild = true,
+            workerUrl = "https://example.com/tts",
+            byokCloudAvailable = false
+        )
+
+        assertEquals(TtsPlaybackManager.TtsMode.BASE, mode)
+    }
+
+    @Test
     fun `native tts voice list is resolved only when required`() {
         assertEquals(false, shouldResolveNativeTtsVoice(preferredVoiceName = null, isOfflineBuild = false))
         assertEquals(false, shouldResolveNativeTtsVoice(preferredVoiceName = "   ", isOfflineBuild = false))

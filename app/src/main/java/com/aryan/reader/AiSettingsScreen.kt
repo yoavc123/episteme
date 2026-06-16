@@ -57,7 +57,12 @@ fun AiSettingsScreen(
     val providerLabels = mapOf(
         "gemini" to stringResource(R.string.provider_gemini),
         "groq" to stringResource(R.string.provider_groq),
+        "openai" to stringResource(R.string.provider_openai),
+        "deepgram" to stringResource(R.string.provider_deepgram),
     )
+    val chatProviders = listOf("gemini", "groq")
+    val transcriptionProviders = if (BuildConfig.IS_OFFLINE) emptyList() else listOf("openai", "deepgram")
+    val editableProviders = chatProviders + transcriptionProviders
 
     fun refresh() {
         settings = loadAiByokSettings(context)
@@ -92,6 +97,17 @@ fun AiSettingsScreen(
             Text(stringResource(R.string.ai_settings_saved_keys), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             SavedKeyRow(providerLabels.getValue("gemini"), maskedAiByokKey(context, "gemini"), onDelete = { providerToDelete = "gemini" })
             SavedKeyRow(providerLabels.getValue("groq"), maskedAiByokKey(context, "groq"), onDelete = { providerToDelete = "groq" })
+            if (BuildConfig.IS_OFFLINE) {
+                Text(
+                    stringResource(R.string.ai_settings_transcription_backups_offline),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(stringResource(R.string.ai_settings_transcription_backups), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                SavedKeyRow(providerLabels.getValue("openai"), maskedAiByokKey(context, "openai"), onDelete = { providerToDelete = "openai" })
+                SavedKeyRow(providerLabels.getValue("deepgram"), maskedAiByokKey(context, "deepgram"), onDelete = { providerToDelete = "deepgram" })
+            }
 
             HorizontalDivider()
 
@@ -113,7 +129,7 @@ fun AiSettingsScreen(
                     expanded = providerMenuExpanded,
                     onDismissRequest = { providerMenuExpanded = false }
                 ) {
-                    listOf("gemini", "groq").forEach { provider ->
+                    editableProviders.forEach { provider ->
                         DropdownMenuItem(
                             text = { Text(providerLabels[provider].orEmpty()) },
                             onClick = {

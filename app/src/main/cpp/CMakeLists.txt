@@ -23,6 +23,8 @@ add_compile_options(
     -D__TIME__="\"00:00:00\""
 )
 
+set(WHISPER_CPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/whisper.cpp)
+
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
 
@@ -78,6 +80,17 @@ set(BUILD_SHARED_LIBS OFF)
 # are not explicitly exported by the library's public API for shared builds.
 set_target_properties(mobi PROPERTIES C_VISIBILITY_PRESET default)
 
+add_library(
+        whisper
+        STATIC
+        ${WHISPER_CPP_DIR}/src/whisper_stub.cpp
+)
+
+target_include_directories(whisper
+        PUBLIC
+        ${WHISPER_CPP_DIR}/include
+)
+
 
 # ===================================================================
 # FINAL NATIVE LIBRARY FOR THE APP
@@ -88,6 +101,7 @@ add_library(
         SHARED
         Woff2Converter.cpp
         mobi_jni_bridge.c
+        whisper_jni_bridge.cpp
         pdfium_bridge.cpp  # Add this new file
 )
 
@@ -96,6 +110,7 @@ target_include_directories(native-lib
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/woff2/include
         ${CMAKE_CURRENT_SOURCE_DIR}/libmobi/src
+        ${WHISPER_CPP_DIR}/include
 )
 
 # 8. Find the Android logging and zlib libraries.
@@ -108,6 +123,7 @@ target_link_libraries(
         PRIVATE
         woff2dec
         mobi
+        whisper
         ${log-lib}
         ${z-lib}
         dl

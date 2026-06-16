@@ -171,6 +171,8 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.all {
+            it.maxHeapSize = "2g"
+            it.maxParallelForks = 1
             it.jvmArgs("-Xss2m")
         }
     }

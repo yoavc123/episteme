@@ -25,6 +25,8 @@
     <string name="legal_terms_of_service">Điều khoản dịch vụ</string>
     <string name="legal_privacy_policy">Chính sách quyền riêng tư</string>
     <string name="legal_licenses">Giấy phép</string>
+    <string name="ai_settings_transcription_backups">Nhà cung cấp dự phòng phiên âm</string>
+    <string name="ai_settings_transcription_backups_offline">Các dự phòng phiên âm bên ngoài bị ẩn trong bản dựng ngoại tuyến. Nhập mô hình Whisper cục bộ vẫn có trong đồng bộ âm thanh.</string>
     <string name="items_selected_count">Đã chọn %1$d</string>
     <string name="clear_selection">Xóa lựa chọn</string>
     <string name="pin_unpin">Ghim/Bỏ ghim</string>
@@ -819,6 +821,12 @@
     <string name="tts_active_engine">Công cụ TTS đang dùng</string>
     <string name="tts_mode_cloud_ai">AI đám mây</string>
     <string name="tts_mode_device_native">Gốc trên thiết bị</string>
+    <string name="tts_error_synced_audio_not_synthetic">Âm thanh đã đồng bộ được phát bằng trình đọc EPUB readaloud, không phải TTS tổng hợp.</string>
+    <string name="tts_synced_audio_title">Âm thanh sách đã đồng bộ</string>
+    <string name="tts_synced_audio_available_desc">Dùng âm thanh thật đã căn chỉnh với EPUB này thay vì giọng đọc được tạo.</string>
+    <string name="tts_synced_audio_cta_desc">EPUB này chưa có âm thanh đã đồng bộ. Đồng bộ một tệp âm thanh để tạo EPUB readaloud.</string>
+    <string name="tts_synced_audio_start">Phát âm thanh đã đồng bộ</string>
+    <string name="tts_synced_audio_sync_cta">Đồng bộ âm thanh cho sách này</string>
     <string name="tts_tab_cloud_voices">Giọng đám mây</string>
     <string name="tts_tab_device_voices">Giọng thiết bị</string>
     <string name="tts_tab_cloud_cache">Bộ nhớ đệm đám mây</string>

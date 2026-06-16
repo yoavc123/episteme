@@ -7179,7 +7179,16 @@ fun EpubReaderHost(
                 },
                 isTtsActive = (ttsState.isPlaying || ttsState.isLoading) && ttsState.playbackSource == "READER",
                 getAuthToken = { viewModel.getAuthToken() },
-                bookTitle = epubBook.title
+                bookTitle = epubBook.title,
+                syncedAudioEligible = true,
+                syncedAudioAvailable = false,
+                onStartSyncedAudio = {
+                    ttsController.stop()
+                    showTtsSettingsSheet = false
+                },
+                onOpenAudioSync = {
+                    showTtsSettingsSheet = false
+                }
             )
         }
 

@@ -992,6 +992,7 @@ class TtsService : MediaSessionService() {
                     }
                 }
                 TtsMode.BASE -> synthesizeBaseTtsChunk(text)
+                TtsMode.SYNCED -> TtsAudioData(audioFile = null, serverText = null, wordTimings = null, error = getString(R.string.tts_error_synced_audio_not_synthetic))
             }
         }
 

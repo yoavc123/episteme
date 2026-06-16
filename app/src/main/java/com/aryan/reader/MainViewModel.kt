@@ -53,6 +53,9 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.aryan.reader.audio.AudioSyncFileImporter
+import com.aryan.reader.audio.AudioSyncRepository
+import com.aryan.reader.audio.AudioSyncWorker
 import com.aryan.reader.data.BookMetadata
 import com.aryan.reader.data.BookMetadataEdit
 import com.aryan.reader.data.CloudflareRepository
@@ -195,6 +198,8 @@ open class MainViewModel(application: Application) : AndroidViewModel(applicatio
     private val singleFileImporter by lazy { SingleFileImporter(appContext) }
     private val bookImporter by lazy { BookImporter(appContext) }
     private val epubMetadataFileEditor by lazy { EpubMetadataFileEditor(appContext) }
+    private val audioSyncRepository by lazy { AudioSyncRepository(appContext) }
+    private val audioSyncFileImporter by lazy { AudioSyncFileImporter(appContext) }
     private val pageLayoutRepository by lazy { PageLayoutRepository(appContext) }
     private val pdfRichTextRepository by lazy { com.aryan.reader.pdf.PdfRichTextRepository(appContext) }
     private val pdfTextBoxRepository by lazy { PdfTextBoxRepository(appContext) }
@@ -236,6 +241,49 @@ open class MainViewModel(application: Application) : AndroidViewModel(applicatio
     private val speechBubbleCacheMutex = Mutex()
     private val speechBubbleCache = ConcurrentHashMap<SpeechBubbleCacheKey, List<CachedSpeechBubble>>()
     private val speechBubbleDetectionJobs = ConcurrentHashMap<SpeechBubbleCacheKey, Deferred<List<CachedSpeechBubble>>>()
+
+    fun observeAudioSyncSessions() = audioSyncRepository.observeAllSessions()
+
+    fun observeAudioSyncSessionsForBook(bookId: String) = audioSyncRepository.observeBookSessions(bookId)
+
+    fun startAudioSync(book: RecentFileItem, audioUris: List<Uri>) {
+        viewModelScope.launch {
+            var createdSessionId: String? = null
+            runCatching {
+                val session = audioSyncRepository.createSession(book)
+                createdSessionId = session.sessionId
+                val sources = audioSyncFileImporter.importFromUris(appContext, session.sessionId, audioUris)
+                audioSyncRepository.updateAudioSources(session.sessionId, sources)
+                val request = OneTimeWorkRequestBuilder<AudioSyncWorker>()
+                    .setInputData(androidx.work.workDataOf(AudioSyncWorker.KEY_SESSION_ID to session.sessionId))
+                    .build()
+                WorkManager.getInstance(appContext).enqueueUniqueWork(
+                    AudioSyncWorker.uniqueWorkName(session.sessionId),
+                    ExistingWorkPolicy.REPLACE,
+                    request
+                )
+            }.onFailure { error ->
+                createdSessionId?.let { sessionId ->
+                    audioSyncRepository.markFailed(sessionId, error.message ?: "Failed to start audio sync.", "Preparing")
+                }
+                Timber.e(error, "Failed to start audio sync")
+            }
+        }
+    }
+
+    fun cancelAudioSync(sessionId: String) {
+        viewModelScope.launch {
+            audioSyncRepository.requestCancellation(sessionId)
+            WorkManager.getInstance(appContext).cancelUniqueWork(AudioSyncWorker.uniqueWorkName(sessionId))
+        }
+    }
+
+    fun clearAudioSyncSession(sessionId: String) {
+        viewModelScope.launch {
+            WorkManager.getInstance(appContext).cancelUniqueWork(AudioSyncWorker.uniqueWorkName(sessionId))
+            audioSyncRepository.deleteSessionCache(sessionId)
+        }
+    }
 
     private fun getOrInitDetector(context: Context): com.aryan.reader.ml.IPanelDetector? {
         if (panelDetector == null && BuildConfig.DEBUG) {

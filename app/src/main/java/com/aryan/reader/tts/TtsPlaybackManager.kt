@@ -133,6 +133,22 @@ internal fun resolveTtsStartChunkIndex(
     return requestedChunkIndex.coerceIn(0, totalChunks - 1)
 }
 
+data class SyncedAudioTtsOptionModel(
+    val visible: Boolean,
+    val canStartPlayback: Boolean,
+    val canOpenSync: Boolean
+)
+
+fun syncedAudioTtsOptionModel(
+    eligible: Boolean,
+    available: Boolean,
+    isTtsActive: Boolean
+): SyncedAudioTtsOptionModel = SyncedAudioTtsOptionModel(
+    visible = eligible,
+    canStartPlayback = eligible && available && !isTtsActive,
+    canOpenSync = eligible && !available && !isTtsActive
+)
+
 internal fun resolveReusableTtsPlaylistIndex(
     playlistIndex: Int?,
     direction: Int
@@ -243,7 +259,7 @@ class TtsPlaybackManager(
     private val chunkStreamIds = java.util.concurrent.ConcurrentHashMap<Int, String>()
 
     enum class TtsMode {
-        CLOUD, BASE
+        CLOUD, BASE, SYNCED
     }
 
     data class TtsState(

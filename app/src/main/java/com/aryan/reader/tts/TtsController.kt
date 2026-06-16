@@ -91,6 +91,10 @@ internal fun resolveTtsModeForBuild(
         TtsPlaybackManager.TtsMode.BASE
     }
 
+    if (requestedMode == TtsPlaybackManager.TtsMode.SYNCED) {
+        return TtsPlaybackManager.TtsMode.BASE
+    }
+
     if (requestedMode != TtsPlaybackManager.TtsMode.CLOUD) {
         return requestedMode
     }

@@ -26,6 +26,8 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.aryan.reader.audio.AudioSyncDao
+import com.aryan.reader.audio.AudioSyncEntity
 
 @Database(
     entities =[
@@ -34,9 +36,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ShelfEntity::class,
         BookShelfCrossRef::class,
         TagEntity::class,
-        BookTagCrossRef::class
+        BookTagCrossRef::class,
+        AudioSyncEntity::class
     ],
-    version = 23,
+    version = 24,
     exportSchema = false
 )
 @TypeConverters(FileTypeConverter::class)
@@ -45,6 +48,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun customFontDao(): CustomFontDao
     abstract fun shelfDao(): ShelfDao
     abstract fun tagDao(): TagDao
+    abstract fun audioSyncDao(): AudioSyncDao
 
     companion object {
         @Volatile
@@ -307,6 +311,30 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `audio_sync_sessions` (
+                        `sessionId` TEXT NOT NULL,
+                        `bookId` TEXT NOT NULL,
+                        `bookTitle` TEXT NOT NULL,
+                        `sourceEpubUri` TEXT NOT NULL,
+                        `audioSourcesJson` TEXT NOT NULL,
+                        `provider` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `progressPercent` INTEGER NOT NULL,
+                        `currentStep` TEXT,
+                        `outputEpubPath` TEXT,
+                        `errorMessage` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `cancelRequested` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`)
+                    )
+                """)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -320,7 +348,7 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
                         MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16,
                         MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20,
-                        MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23
+                        MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24
                     )
                     .fallbackToDestructiveMigration(false)
                     .build()
