@@ -7,6 +7,7 @@ import org.json.JSONObject
 class OpenAiAudioTranscriptionProvider(
     private val context: Context,
     private val apiKey: String,
+    private val model: String = OPENAI_AUDIO_SYNC_DEFAULT_MODEL,
     private val httpClient: ExternalTranscriptionHttpClient = UrlConnectionExternalTranscriptionHttpClient()
 ) : AudioTranscriptionProvider {
     override val id: String = "openai-whisper"
@@ -27,7 +28,7 @@ class OpenAiAudioTranscriptionProvider(
                     url = "https://api.openai.com/v1/audio/transcriptions",
                     headers = mapOf("Authorization" to "Bearer $apiKey"),
                     fields = buildMap {
-                        put("model", "whisper-1")
+                        put("model", model.ifBlank { OPENAI_AUDIO_SYNC_DEFAULT_MODEL })
                         put("response_format", "verbose_json")
                         put("timestamp_granularities[]", "word")
                         request.language?.let { put("language", it) }
@@ -45,6 +46,8 @@ class OpenAiAudioTranscriptionProvider(
         }
     }
 }
+
+const val OPENAI_AUDIO_SYNC_DEFAULT_MODEL = "whisper-1"
 
 object OpenAiTranscriptionResponseParser {
     fun parse(json: String): List<TranscriptSegment> {

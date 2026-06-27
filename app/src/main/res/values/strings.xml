@@ -110,6 +110,10 @@
     <string name="provider_deepgram" translatable="false">Deepgram</string>
     <string name="ai_settings_transcription_backups">Transcription backup providers</string>
     <string name="ai_settings_transcription_backups_offline">External transcription backups are hidden in offline builds. Local Whisper model import remains available in audio sync.</string>
+    <string name="ai_settings_openai_audio_sync_model">OpenAI audiobook model</string>
+    <string name="ai_settings_openai_audio_sync_model_desc">Used when OpenAI transcribes audiobook audio.</string>
+    <string name="ai_settings_deepgram_audio_sync_model">Deepgram audiobook model</string>
+    <string name="ai_settings_deepgram_audio_sync_model_desc">Used when Deepgram transcribes audiobook audio.</string>
 
     <!-- Top Bar Options -->
     <string name="options_recent_limit">Recent Files Limit</string>

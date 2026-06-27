@@ -1,6 +1,7 @@
 package com.aryan.reader.audio
 
 import android.content.Context
+import com.aryan.reader.AiByokSettings
 import com.aryan.reader.BuildConfig
 import com.aryan.reader.loadAiByokSettings
 
@@ -10,24 +11,29 @@ interface AudioSyncTranscriptionProviderSelector {
 
 class AudioSyncProviderSelector(
     private val localProvider: AudioTranscriptionProvider,
-    private val openAiProviderFactory: (String) -> AudioTranscriptionProvider,
-    private val deepgramProviderFactory: (String) -> AudioTranscriptionProvider,
-    private val isOfflineBuild: Boolean = BuildConfig.IS_OFFLINE
+    private val openAiProviderFactory: (String, String) -> AudioTranscriptionProvider,
+    private val deepgramProviderFactory: (String, String) -> AudioTranscriptionProvider,
+    private val isOfflineBuild: Boolean = BuildConfig.IS_OFFLINE,
+    private val settingsLoader: (Context) -> AiByokSettings = ::loadAiByokSettings
 ) : AudioSyncTranscriptionProviderSelector {
     constructor(context: Context) : this(
         localProvider = WhisperLocalTranscriptionProvider(context, WhisperModelManager(context)),
-        openAiProviderFactory = { key -> OpenAiAudioTranscriptionProvider(context, key) },
-        deepgramProviderFactory = { key -> DeepgramAudioTranscriptionProvider(context, key) }
+        openAiProviderFactory = { key, model -> OpenAiAudioTranscriptionProvider(context, key, model) },
+        deepgramProviderFactory = { key, model -> DeepgramAudioTranscriptionProvider(context, key, model) }
     )
 
     override fun providersFor(context: Context, preferredProvider: AudioSyncProvider): List<AudioTranscriptionProvider> {
-        val settings = loadAiByokSettings(context)
+        val settings = settingsLoader(context)
         val fallbacks = if (isOfflineBuild) {
             emptyList()
         } else {
             buildList {
-                if (settings.openAiKey.isNotBlank()) add(openAiProviderFactory(settings.openAiKey))
-                if (settings.deepgramKey.isNotBlank()) add(deepgramProviderFactory(settings.deepgramKey))
+                if (settings.openAiKey.isNotBlank()) {
+                    add(openAiProviderFactory(settings.openAiKey, settings.openAiAudioSyncModel.modelNameForProvider("openai") ?: OPENAI_AUDIO_SYNC_DEFAULT_MODEL))
+                }
+                if (settings.deepgramKey.isNotBlank()) {
+                    add(deepgramProviderFactory(settings.deepgramKey, settings.deepgramAudioSyncModel.modelNameForProvider("deepgram") ?: DEEPGRAM_AUDIO_SYNC_DEFAULT_MODEL))
+                }
             }
         }
         return when (preferredProvider) {
@@ -37,3 +43,19 @@ class AudioSyncProviderSelector(
         }
     }
 }
+
+private fun String.modelNameForProvider(provider: String): String? {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return null
+    val separator = trimmed.indexOf(':')
+    if (separator < 0) return trimmed
+    val selectedProvider = trimmed.substring(0, separator)
+    if (selectedProvider !in audioSyncModelProviders) return trimmed
+    val prefix = "$provider:"
+    return trimmed
+        .takeIf { it.startsWith(prefix) }
+        ?.removePrefix(prefix)
+        ?.takeIf { it.isNotBlank() }
+}
+
+private val audioSyncModelProviders = setOf("openai", "deepgram")

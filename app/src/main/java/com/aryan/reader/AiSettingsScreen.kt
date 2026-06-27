@@ -107,6 +107,20 @@ fun AiSettingsScreen(
                 Text(stringResource(R.string.ai_settings_transcription_backups), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 SavedKeyRow(providerLabels.getValue("openai"), maskedAiByokKey(context, "openai"), onDelete = { providerToDelete = "openai" })
                 SavedKeyRow(providerLabels.getValue("deepgram"), maskedAiByokKey(context, "deepgram"), onDelete = { providerToDelete = "deepgram" })
+                ModelSelector(
+                    title = stringResource(R.string.ai_settings_openai_audio_sync_model),
+                    description = stringResource(R.string.ai_settings_openai_audio_sync_model_desc),
+                    selectedId = settings.openAiAudioSyncModel,
+                    options = openAiAudioSyncModelOptions,
+                    onSelected = { updateModels(settings.copy(openAiAudioSyncModel = it)) }
+                )
+                ModelSelector(
+                    title = stringResource(R.string.ai_settings_deepgram_audio_sync_model),
+                    description = stringResource(R.string.ai_settings_deepgram_audio_sync_model_desc),
+                    selectedId = settings.deepgramAudioSyncModel,
+                    options = deepgramAudioSyncModelOptions,
+                    onSelected = { updateModels(settings.copy(deepgramAudioSyncModel = it)) }
+                )
             }
 
             HorizontalDivider()
