@@ -9,13 +9,15 @@ import java.util.Locale
 
 class WhisperModelManager(
     private val modelsDir: File,
-    private val preferences: PreferenceStore
+    private val preferences: PreferenceStore,
+    private val bundledModelSource: (() -> InputStream)? = null
 ) {
     constructor(context: Context) : this(
         modelsDir = File(context.filesDir, "audio_sync/models"),
         preferences = SharedPreferencesStore(
             context.getSharedPreferences("whisper_models", Context.MODE_PRIVATE)
-        )
+        ),
+        bundledModelSource = bundledModelSource(context)
     )
 
     data class ModelInfo(
@@ -33,6 +35,8 @@ class WhisperModelManager(
     fun selectedModelFile(): File? = preferences.getString(KEY_SELECTED_MODEL_PATH)
         ?.let(::File)
         ?.takeIf { it.isFile && isLikelyWhisperModel(it) }
+        ?: selectExistingImportedModel()
+        ?: bootstrapBundledModel()
 
     fun listModels(): List<ModelInfo> {
         val selectedPath = preferences.getString(KEY_SELECTED_MODEL_PATH)
@@ -106,10 +110,48 @@ class WhisperModelManager(
         return candidate
     }
 
+    private fun selectExistingImportedModel(): File? = modelsDir.listFiles()
+        .orEmpty()
+        .filter { it.isFile && it.name != BUNDLED_MODEL_FILE_NAME && isLikelyWhisperModel(it) }
+        .sortedBy { it.name.lowercase(Locale.US) }
+        .firstOrNull()
+        ?.also { preferences.putString(KEY_SELECTED_MODEL_PATH, it.absolutePath) }
+
+    private fun bootstrapBundledModel(): File? {
+        val source = bundledModelSource ?: return null
+        modelsDir.mkdirs()
+        val destination = File(modelsDir, BUNDLED_MODEL_FILE_NAME)
+        if (destination.isFile && isLikelyWhisperModel(destination)) {
+            preferences.putString(KEY_SELECTED_MODEL_PATH, destination.absolutePath)
+            return destination
+        }
+        destination.delete()
+        return try {
+            source().use { input -> destination.outputStream().use { input.copyTo(it) } }
+            if (isLikelyWhisperModel(destination)) {
+                preferences.putString(KEY_SELECTED_MODEL_PATH, destination.absolutePath)
+                destination
+            } else {
+                destination.delete()
+                null
+            }
+        } catch (error: Exception) {
+            destination.delete()
+            null
+        }
+    }
+
     companion object {
         private const val KEY_SELECTED_MODEL_PATH = "selected_model_path"
+        private const val BUNDLED_MODEL_FILE_NAME = "ggml-tiny.bin"
+        private const val BUNDLED_MODEL_ASSET_PATH = "whisper/$BUNDLED_MODEL_FILE_NAME"
         private const val MIN_MODEL_BYTES = 1024L
         private val allowedExtensions = setOf("bin", "gguf")
+
+        private fun bundledModelSource(context: Context): () -> InputStream {
+            val assets = context.applicationContext.assets
+            return { assets.open(BUNDLED_MODEL_ASSET_PATH) }
+        }
 
         fun sanitizeModelFileName(displayName: String): String? {
             val cleaned = displayName.substringAfterLast('/').substringAfterLast('\\')
