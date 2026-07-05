@@ -7,7 +7,7 @@ interface AudioTranscriptionProvider {
 
     suspend fun transcribe(
         request: AudioTranscriptionRequest,
-        progress: (TranscriptionProgress) -> Unit = {}
+        progress: suspend (TranscriptionProgress) -> Unit = {}
     ): TranscriptionResult
 }
 

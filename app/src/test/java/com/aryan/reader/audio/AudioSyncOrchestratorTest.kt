@@ -56,6 +56,37 @@ class AudioSyncOrchestratorTest {
         assertEquals(1, backup.calls)
     }
 
+    @Test
+    fun transcriptionProgressUpdatesSessionStepWithChunkAndSourceCounts() = runTest {
+        val epub = temp.newFile("book.epub").apply { writeText("epub") }
+        val audio = temp.newFile("track.mp3").apply { writeBytes(byteArrayOf(1)) }
+        val dao = FakeOrchestratorAudioSyncDao()
+        val repository = AudioSyncRepository(dao, temp.newFolder("sync")) { 100L }
+        val session = repository.createSession(book(epub), listOf(source(audio)))
+        val provider = FakeProvider.success(
+            progressEvents = listOf(TranscriptionProgress(0, 1, 3, "Decoding track.mp3"))
+        )
+
+        val result = orchestrator(repository, listOf(provider), FakeEpubTools()).run(session.sessionId)
+
+        assertTrue("Expected completion, got $result", result is AudioSyncRunResult.Completed)
+        val progressUpdate = dao.progressUpdates.firstOrNull {
+            it.currentStep == "Source 1 of 1, chunk 3: Decoding track.mp3"
+        }
+        assertTrue("Expected chunk/source progress update, got ${dao.progressUpdates}", progressUpdate != null)
+        assertTrue(progressUpdate!!.progressPercent in 20..64)
+    }
+
+    @Test
+    fun transcriptionProgressHelpersStayInTranscriptionBand() {
+        assertEquals(
+            "Source 2 of 3, chunk 4: decoding",
+            transcriptionProgressStatus(sourceIndex = 1, sourceCount = 3, processedChunks = 4, message = "decoding")
+        )
+        assertTrue(transcriptionProgressPercent(sourceIndex = 0, sourceCount = 3, processedChunks = 0) in 20..64)
+        assertTrue(transcriptionProgressPercent(sourceIndex = 2, sourceCount = 3, processedChunks = 40) in 20..64)
+    }
+
     private fun orchestrator(
         repository: AudioSyncRepository,
         providers: List<AudioTranscriptionProvider>,
@@ -92,20 +123,27 @@ class AudioSyncOrchestratorTest {
 
 private class FakeProvider(
     override val id: String,
-    private val result: TranscriptionResult
+    private val result: TranscriptionResult,
+    private val progressEvents: List<TranscriptionProgress> = emptyList(),
 ) : AudioTranscriptionProvider {
     var calls = 0
 
     override suspend fun transcribe(
         request: AudioTranscriptionRequest,
-        progress: (TranscriptionProgress) -> Unit
+        progress: suspend (TranscriptionProgress) -> Unit
     ): TranscriptionResult {
         calls += 1
+        for (event in progressEvents) {
+            progress(event)
+        }
         return result
     }
 
     companion object {
-        fun success(id: String = "local-whisper") = FakeProvider(
+        fun success(
+            id: String = "local-whisper",
+            progressEvents: List<TranscriptionProgress> = emptyList(),
+        ) = FakeProvider(
             id,
             TranscriptionResult.Success(
                 listOf(
@@ -119,7 +157,8 @@ private class FakeProvider(
                         )
                     )
                 )
-            )
+            ),
+            progressEvents,
         )
 
         fun failure(id: String) = FakeProvider(
@@ -148,6 +187,7 @@ private class FakeEpubTools : AudioSyncEpubTools {
 
 private class FakeOrchestratorAudioSyncDao : AudioSyncDao {
     private val state = MutableStateFlow<List<AudioSyncEntity>>(emptyList())
+    val progressUpdates = mutableListOf<ProgressUpdate>()
 
     override suspend fun upsert(session: AudioSyncEntity) {
         state.value = state.value.filterNot { it.sessionId == session.sessionId } + session
@@ -161,7 +201,22 @@ private class FakeOrchestratorAudioSyncDao : AudioSyncDao {
 
     override fun observeAll(): Flow<List<AudioSyncEntity>> = state
 
+    override fun observeAllSummaries(): Flow<List<AudioSyncSessionSummary>> = state.map { sessions ->
+        sessions
+            .sortedByDescending { it.updatedAt }
+            .map { session ->
+                AudioSyncSessionSummary(
+                    sessionId = session.sessionId,
+                    bookId = session.bookId,
+                    status = session.status,
+                    progressPercent = session.progressPercent,
+                    updatedAt = session.updatedAt,
+                )
+            }
+    }
+
     override suspend fun updateProgress(sessionId: String, status: String, progressPercent: Int, currentStep: String?, updatedAt: Long) {
+        progressUpdates += ProgressUpdate(status, progressPercent, currentStep)
         update(sessionId) { it.copy(status = status, progressPercent = progressPercent, currentStep = currentStep, updatedAt = updatedAt) }
     }
 
@@ -188,4 +243,10 @@ private class FakeOrchestratorAudioSyncDao : AudioSyncDao {
     private fun update(sessionId: String, transform: (AudioSyncEntity) -> AudioSyncEntity) {
         state.value = state.value.map { if (it.sessionId == sessionId) transform(it) else it }
     }
+
+    data class ProgressUpdate(
+        val status: String,
+        val progressPercent: Int,
+        val currentStep: String?,
+    )
 }

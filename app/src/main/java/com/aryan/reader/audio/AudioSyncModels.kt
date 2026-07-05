@@ -43,6 +43,17 @@ data class AudioSyncSession(
     val cancelRequested: Boolean
 )
 
+data class AudioSyncSessionSummary(
+    val sessionId: String,
+    val bookId: String,
+    val status: String,
+    val progressPercent: Int,
+    val updatedAt: Long,
+) {
+    val syncStatus: AudioSyncStatus
+        get() = status.toAudioSyncStatus()
+}
+
 fun RecentFileItem.requireAudioSyncEpubUri(): String {
     require(type == FileType.EPUB) { "Audio sync currently supports EPUB books only." }
     return requireNotNull(uriString) { "Audio sync requires a local EPUB URI." }

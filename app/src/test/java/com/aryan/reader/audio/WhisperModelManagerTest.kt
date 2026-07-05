@@ -70,52 +70,60 @@ class WhisperModelManagerTest {
     }
 
     @Test
-    fun selectedModelFileCopiesAndSelectsBundledModelOnFreshInstall() {
-        val modelsDir = temp.newFolder("models")
-        val prefs = MemoryPreferenceStore()
-        val manager = WhisperModelManager(modelsDir, prefs) {
-            ByteArrayInputStream(validModelBytes())
-        }
+    fun selectedOrBundledModelFileCopiesBundledTinyWhenNoImportIsSelected() {
+        val manager = WhisperModelManager(
+            modelsDir = temp.newFolder("models"),
+            preferences = MemoryPreferenceStore(),
+            bundledModelName = "ggml-tiny.bin",
+            bundledModelInput = { ByteArrayInputStream(validModelBytes()) }
+        )
 
-        val selected = manager.selectedModelFile()
+        val bundled = manager.selectedOrBundledModelFile()
 
-        val bundledFile = File(modelsDir, "ggml-tiny.bin")
-        assertEquals(bundledFile.absolutePath, selected?.absolutePath)
-        assertTrue(bundledFile.isFile)
-        assertEquals(bundledFile.absolutePath, prefs.getString("selected_model_path"))
-        assertEquals(listOf(bundledFile.absolutePath), manager.listModels().map { it.file.absolutePath })
-        assertTrue(manager.listModels().single().selected)
+        assertNotNull(bundled)
+        assertEquals("ggml-tiny.bin", bundled?.name)
+        assertEquals("ggml-tiny.bin", manager.selectedOrBundledModelName())
+        assertNull(manager.selectedModelFile())
     }
 
     @Test
-    fun selectedModelFileKeepsExistingSelectedModelOverBundledModel() {
-        val modelsDir = temp.newFolder("models")
-        val selectedFile = File(modelsDir, "imported.gguf").apply { writeBytes(validModelBytes("GGUF")) }
-        val manager = WhisperModelManager(modelsDir, MemoryPreferenceStore()) {
-            error("Bundled model should not be read when a selected model exists.")
-        }
-        manager.selectModel(selectedFile)
+    fun selectedOrBundledModelFilePrefersImportedModelOverBundledTiny() {
+        val manager = WhisperModelManager(
+            modelsDir = temp.newFolder("models"),
+            preferences = MemoryPreferenceStore(),
+            bundledModelName = "ggml-tiny.bin",
+            bundledModelInput = { ByteArrayInputStream(validModelBytes()) }
+        )
 
-        val selected = manager.selectedModelFile()
+        manager.importModel("custom.gguf") { ByteArrayInputStream(validModelBytes("GGUF")) }
 
-        assertEquals(selectedFile.absolutePath, selected?.absolutePath)
-        assertFalse(File(modelsDir, "ggml-tiny.bin").exists())
+        assertEquals("custom.gguf", manager.selectedOrBundledModelFile()?.name)
+        assertEquals("custom.gguf", manager.selectedOrBundledModelName())
     }
 
     @Test
-    fun selectedModelFileDeletesInvalidBundledModelAndLeavesNoSelection() {
+    fun selectedOrBundledModelFileReturnsNullWhenBundledTinyIsNotConfigured() {
+        val manager = WhisperModelManager(
+            modelsDir = temp.newFolder("models"),
+            preferences = MemoryPreferenceStore()
+        )
+
+        assertNull(manager.selectedOrBundledModelFile())
+        assertNull(manager.selectedOrBundledModelName())
+    }
+
+    @Test
+    fun selectedOrBundledModelFileDeletesInvalidCopiedBundledTiny() {
         val modelsDir = temp.newFolder("models")
-        val prefs = MemoryPreferenceStore()
-        val manager = WhisperModelManager(modelsDir, prefs) {
-            ByteArrayInputStream(byteArrayOf(0, 0, 0, 0))
-        }
+        val manager = WhisperModelManager(
+            modelsDir = modelsDir,
+            preferences = MemoryPreferenceStore(),
+            bundledModelName = "ggml-tiny.bin",
+            bundledModelInput = { ByteArrayInputStream(byteArrayOf(0, 0, 0, 0)) }
+        )
 
-        val selected = manager.selectedModelFile()
-
-        assertNull(selected)
+        assertNull(manager.selectedOrBundledModelFile())
         assertFalse(File(modelsDir, "ggml-tiny.bin").exists())
-        assertNull(prefs.getString("selected_model_path"))
-        assertTrue(manager.listModels().isEmpty())
     }
 
     private fun validModelBytes(header: String = "ggml"): ByteArray =

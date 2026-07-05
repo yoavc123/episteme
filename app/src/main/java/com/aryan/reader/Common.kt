@@ -242,8 +242,6 @@ private const val PREF_AI_MODEL_DEFINE = "model_define"
 private const val PREF_AI_MODEL_SUMMARIZE = "model_summarize"
 private const val PREF_AI_MODEL_RECAP = "model_recap"
 private const val PREF_AI_TTS_MODEL = "tts_model"
-private const val PREF_AI_OPENAI_AUDIO_SYNC_MODEL = "openai_audio_sync_model"
-private const val PREF_AI_DEEPGRAM_AUDIO_SYNC_MODEL = "deepgram_audio_sync_model"
 private const val PREF_AI_MODEL_EMPTY_MIGRATION_DONE = "model_empty_migration_done"
 private const val AI_KEYSTORE_ALIAS = "reader_ai_byok_key_v1"
 private const val ENCRYPTION_PREFIX = "v1:"
@@ -288,9 +286,7 @@ data class AiByokSettings(
     val defineModel: String = "",
     val summarizeModel: String = "",
     val recapModel: String = "",
-    val ttsModel: String = "",
-    val openAiAudioSyncModel: String = "",
-    val deepgramAudioSyncModel: String = ""
+    val ttsModel: String = ""
 )
 
 val aiByokModelOptions = listOf(
@@ -302,18 +298,6 @@ val aiByokModelOptions = listOf(
     AiModelOption("gemini", "gemini-flash-lite-latest"),
     AiModelOption("gemini", "gemini-2.5-flash-lite"),
     AiModelOption("gemini", "gemini-3.1-flash-lite-preview")
-)
-
-val openAiAudioSyncModelOptions = listOf(
-    AiModelOption("openai", "whisper-1"),
-    AiModelOption("openai", "gpt-4o-mini-transcribe"),
-    AiModelOption("openai", "gpt-4o-transcribe")
-)
-
-val deepgramAudioSyncModelOptions = listOf(
-    AiModelOption("deepgram", "nova-3"),
-    AiModelOption("deepgram", "nova-2"),
-    AiModelOption("deepgram", "enhanced")
 )
 
 private fun Context.aiPrefs() = getSharedPreferences(AI_PREFS_NAME, Context.MODE_PRIVATE)
@@ -390,9 +374,7 @@ fun loadAiByokSettings(context: Context): AiByokSettings {
         defineModel = prefs.getString(PREF_AI_MODEL_DEFINE, "") ?: "",
         summarizeModel = prefs.getString(PREF_AI_MODEL_SUMMARIZE, "") ?: "",
         recapModel = prefs.getString(PREF_AI_MODEL_RECAP, "") ?: "",
-        ttsModel = prefs.getString(PREF_AI_TTS_MODEL, "") ?: "",
-        openAiAudioSyncModel = prefs.getString(PREF_AI_OPENAI_AUDIO_SYNC_MODEL, "") ?: "",
-        deepgramAudioSyncModel = prefs.getString(PREF_AI_DEEPGRAM_AUDIO_SYNC_MODEL, "") ?: ""
+        ttsModel = prefs.getString(PREF_AI_TTS_MODEL, "") ?: ""
     )
     val geminiStored = prefs.getString(PREF_AI_GEMINI_KEY, "").orEmpty()
     val groqStored = prefs.getString(PREF_AI_GROQ_KEY, "").orEmpty()
@@ -420,8 +402,6 @@ fun saveAiByokSettings(context: Context, settings: AiByokSettings) {
         putString(PREF_AI_MODEL_SUMMARIZE, settings.summarizeModel)
         putString(PREF_AI_MODEL_RECAP, settings.recapModel)
         putString(PREF_AI_TTS_MODEL, settings.ttsModel)
-        putString(PREF_AI_OPENAI_AUDIO_SYNC_MODEL, settings.openAiAudioSyncModel)
-        putString(PREF_AI_DEEPGRAM_AUDIO_SYNC_MODEL, settings.deepgramAudioSyncModel)
     }
 }
 

@@ -9,119 +9,65 @@ import org.junit.Test
 
 class AudioSyncProviderSelectorTest {
     @Test
-    fun providersForUsesConfiguredExternalModelNames() = runTest {
-        val openAiModels = mutableListOf<String>()
-        val deepgramModels = mutableListOf<String>()
-        val selector = AudioSyncProviderSelector(
-            localProvider = FakeProvider("local"),
-            openAiProviderFactory = { _, model ->
-                openAiModels += model
-                FakeProvider("openai-whisper")
-            },
-            deepgramProviderFactory = { _, model ->
-                deepgramModels += model
-                FakeProvider("deepgram-nova")
-            },
-            isOfflineBuild = false,
-            settingsLoader = {
-                AiByokSettings(
-                    openAiKey = "openai-key",
-                    deepgramKey = "deepgram-key",
-                    openAiAudioSyncModel = "openai:gpt-4o-transcribe",
-                    deepgramAudioSyncModel = "deepgram:nova-2"
-                )
-            }
+    fun providersForLocalWhisperUsesOnlyLocalProvider() = runTest {
+        val selector = selector(
+            settings = AiByokSettings(openAiKey = "openai-key", deepgramKey = "deepgram-key")
         )
 
-        selector.providersFor(mockk<Context>(), AudioSyncProvider.LOCAL_WHISPER)
+        val providers = selector.providersFor(mockk<Context>(), AudioSyncProvider.LOCAL_WHISPER)
 
-        assertEquals(listOf("gpt-4o-transcribe"), openAiModels)
-        assertEquals(listOf("nova-2"), deepgramModels)
+        assertEquals(listOf("local"), providers.map { it.id })
     }
 
     @Test
-    fun providersForKeepsDefaultsWhenModelsAreBlankOrMismatched() = runTest {
-        val openAiModels = mutableListOf<String>()
-        val deepgramModels = mutableListOf<String>()
-        val selector = AudioSyncProviderSelector(
-            localProvider = FakeProvider("local"),
-            openAiProviderFactory = { _, model ->
-                openAiModels += model
-                FakeProvider("openai-whisper")
-            },
-            deepgramProviderFactory = { _, model ->
-                deepgramModels += model
-                FakeProvider("deepgram-nova")
-            },
-            isOfflineBuild = false,
-            settingsLoader = {
-                AiByokSettings(
-                    openAiKey = "openai-key",
-                    deepgramKey = "deepgram-key",
-                    openAiAudioSyncModel = "deepgram:nova-2",
-                    deepgramAudioSyncModel = ""
-                )
-            }
+    fun providersForPreferredExternalUsesOnlyThatProviderWhenConfigured() = runTest {
+        val selector = selector(
+            settings = AiByokSettings(openAiKey = "openai-key", deepgramKey = "deepgram-key")
         )
 
-        selector.providersFor(mockk<Context>(), AudioSyncProvider.LOCAL_WHISPER)
+        val providers = selector.providersFor(mockk<Context>(), AudioSyncProvider.OPENAI)
 
-        assertEquals(listOf(OPENAI_AUDIO_SYNC_DEFAULT_MODEL), openAiModels)
-        assertEquals(listOf(DEEPGRAM_AUDIO_SYNC_DEFAULT_MODEL), deepgramModels)
+        assertEquals(listOf("openai-whisper"), providers.map { it.id })
     }
 
     @Test
-    fun providersForAcceptsRawCustomModelIds() = runTest {
-        val openAiModels = mutableListOf<String>()
-        val selector = AudioSyncProviderSelector(
-            localProvider = FakeProvider("local"),
-            openAiProviderFactory = { _, model ->
-                openAiModels += model
-                FakeProvider("openai-whisper")
-            },
-            deepgramProviderFactory = { _, _ -> FakeProvider("deepgram-nova") },
-            isOfflineBuild = false,
-            settingsLoader = {
-                AiByokSettings(
-                    openAiKey = "openai-key",
-                    openAiAudioSyncModel = "custom-transcribe-model"
-                )
-            }
+    fun providersForUnavailablePreferredExternalReturnsNoProvider() = runTest {
+        val selector = selector(
+            settings = AiByokSettings(deepgramKey = "deepgram-key")
         )
 
-        selector.providersFor(mockk<Context>(), AudioSyncProvider.OPENAI)
+        val providers = selector.providersFor(mockk<Context>(), AudioSyncProvider.OPENAI)
 
-        assertEquals(listOf("custom-transcribe-model"), openAiModels)
+        assertEquals(emptyList<String>(), providers.map { it.id })
     }
 
     @Test
-    fun providersForAcceptsRawCustomModelIdsWithColons() = runTest {
-        val openAiModels = mutableListOf<String>()
-        val selector = AudioSyncProviderSelector(
-            localProvider = FakeProvider("local"),
-            openAiProviderFactory = { _, model ->
-                openAiModels += model
-                FakeProvider("openai-whisper")
-            },
-            deepgramProviderFactory = { _, _ -> FakeProvider("deepgram-nova") },
-            isOfflineBuild = false,
-            settingsLoader = {
-                AiByokSettings(
-                    openAiKey = "openai-key",
-                    openAiAudioSyncModel = "ft:gpt-4o-transcribe:org:custom"
-                )
-            }
+    fun providersForOfflineBuildExcludesExternalProviders() = runTest {
+        val selector = selector(
+            settings = AiByokSettings(openAiKey = "openai-key", deepgramKey = "deepgram-key"),
+            isOfflineBuild = true
         )
 
-        selector.providersFor(mockk<Context>(), AudioSyncProvider.OPENAI)
+        val providers = selector.providersFor(mockk<Context>(), AudioSyncProvider.LOCAL_WHISPER)
 
-        assertEquals(listOf("ft:gpt-4o-transcribe:org:custom"), openAiModels)
+        assertEquals(listOf("local"), providers.map { it.id })
     }
+
+    private fun selector(
+        settings: AiByokSettings,
+        isOfflineBuild: Boolean = false
+    ) = AudioSyncProviderSelector(
+        localProvider = FakeProvider("local"),
+        openAiProviderFactory = { FakeProvider("openai-whisper") },
+        deepgramProviderFactory = { FakeProvider("deepgram-nova") },
+        isOfflineBuild = isOfflineBuild,
+        settingsLoader = { settings }
+    )
 
     private class FakeProvider(override val id: String) : AudioTranscriptionProvider {
         override suspend fun transcribe(
             request: AudioTranscriptionRequest,
-            progress: (TranscriptionProgress) -> Unit
+            progress: suspend (TranscriptionProgress) -> Unit
         ): TranscriptionResult = TranscriptionResult.Success(emptyList())
     }
 }

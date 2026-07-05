@@ -15,9 +15,9 @@ class WhisperLocalTranscriptionProvider(
 
     override suspend fun transcribe(
         request: AudioTranscriptionRequest,
-        progress: (TranscriptionProgress) -> Unit
+        progress: suspend (TranscriptionProgress) -> Unit
     ): TranscriptionResult {
-        val modelFile = modelManager.selectedModelFile()
+        val modelFile = modelManager.selectedOrBundledModelFile()
             ?: return TranscriptionResult.Failure(TranscriptionError.MissingLocalModel())
 
         var handle = 0L
@@ -57,7 +57,7 @@ class WhisperLocalTranscriptionProvider(
             }
             TranscriptionResult.Success(segments.sortedBy { it.startSeconds })
         } catch (cancelled: CancellationException) {
-            TranscriptionResult.Failure(TranscriptionError.Cancelled())
+            throw cancelled
         } catch (decode: IllegalArgumentException) {
             TranscriptionResult.Failure(
                 TranscriptionError.DecodeFailed("Could not decode audio for local Whisper transcription.", decode)

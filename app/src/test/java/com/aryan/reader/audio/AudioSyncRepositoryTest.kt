@@ -63,7 +63,27 @@ class AudioSyncRepositoryTest {
         assertEquals("boom", updated.errorMessage)
 
         repository.requestCancellation(session.sessionId)
-        assertTrue(repository.getSession(session.sessionId)!!.cancelRequested)
+        updated = repository.getSession(session.sessionId)!!
+        assertTrue(updated.cancelRequested)
+        assertEquals(AudioSyncStatus.CANCELLED, updated.status)
+        assertEquals("Cancelled", updated.currentStep)
+    }
+
+    @Test
+    fun observeAllSessionSummariesDoesNotParseAudioSources() = runTest {
+        val dao = FakeAudioSyncDao()
+        val repository = AudioSyncRepository(dao, temp.newFolder("sync")) { 100L }
+        val session = repository.createSession(epubBook())
+
+        dao.updateAudioSources(session.sessionId, "not-json", 200L)
+        dao.updateProgress(session.sessionId, AudioSyncStatus.RUNNING.name, 42, "Transcribing", 300L)
+
+        val summary = repository.observeAllSessionSummaries().first().single()
+
+        assertEquals(session.sessionId, summary.sessionId)
+        assertEquals(session.bookId, summary.bookId)
+        assertEquals(AudioSyncStatus.RUNNING, summary.syncStatus)
+        assertEquals(42, summary.progressPercent)
     }
 
     @Test
@@ -149,6 +169,20 @@ private class FakeAudioSyncDao : AudioSyncDao {
         state.map { sessions -> sessions.filter { it.bookId == bookId }.sortedByDescending { it.updatedAt } }
 
     override fun observeAll(): Flow<List<AudioSyncEntity>> = state
+
+    override fun observeAllSummaries(): Flow<List<AudioSyncSessionSummary>> = state.map { sessions ->
+        sessions
+            .sortedByDescending { it.updatedAt }
+            .map { session ->
+                AudioSyncSessionSummary(
+                    sessionId = session.sessionId,
+                    bookId = session.bookId,
+                    status = session.status,
+                    progressPercent = session.progressPercent,
+                    updatedAt = session.updatedAt,
+                )
+            }
+    }
 
     override suspend fun updateProgress(sessionId: String, status: String, progressPercent: Int, currentStep: String?, updatedAt: Long) {
         update(sessionId) { it.copy(status = status, progressPercent = progressPercent, currentStep = currentStep, updatedAt = updatedAt) }

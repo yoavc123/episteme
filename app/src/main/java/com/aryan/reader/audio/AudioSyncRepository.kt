@@ -52,6 +52,8 @@ class AudioSyncRepository(
     fun observeAllSessions(): Flow<List<AudioSyncSession>> =
         dao.observeAll().map { sessions -> sessions.map { it.toSession() } }
 
+    fun observeAllSessionSummaries(): Flow<List<AudioSyncSessionSummary>> = dao.observeAllSummaries()
+
     suspend fun updateProgress(
         sessionId: String,
         status: AudioSyncStatus,
@@ -75,6 +77,7 @@ class AudioSyncRepository(
 
     suspend fun requestCancellation(sessionId: String) {
         dao.requestCancel(sessionId, clockMillis())
+        updateProgress(sessionId, AudioSyncStatus.CANCELLED, 0, AudioSyncStep.CANCELLED.label)
     }
 
     suspend fun deleteSessionCache(sessionId: String) {

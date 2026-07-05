@@ -104,10 +104,29 @@ class AudioSyncOrchestrator(
             val tracks = mutableListOf<AudioBookTranscriptTrack>()
             var providerFailed = false
             session.audioSources.forEachIndexed { index, source ->
+                val sourceCount = session.audioSources.size
                 val request = AudioTranscriptionRequest(
                     sources = listOf(audioSourceFactory(File(source.path), source.displayName))
                 )
-                when (val result = provider.transcribe(request)) {
+                val progressCallback: suspend (TranscriptionProgress) -> Unit = { progress ->
+                    val sourceIndex = (index + progress.sourceIndex).coerceIn(0, sourceCount - 1)
+                    repository.updateProgress(
+                        session.sessionId,
+                        AudioSyncStatus.RUNNING,
+                        transcriptionProgressPercent(
+                            sourceIndex = sourceIndex,
+                            sourceCount = sourceCount,
+                            processedChunks = progress.processedChunks,
+                        ),
+                        transcriptionProgressStatus(
+                            sourceIndex = sourceIndex,
+                            sourceCount = sourceCount,
+                            processedChunks = progress.processedChunks,
+                            message = progress.message,
+                        )
+                    )
+                }
+                when (val result = provider.transcribe(request, progress = progressCallback)) {
                     is TranscriptionResult.Success -> {
                         val words = result.segments.flatMap { segment ->
                             if (segment.words.isNotEmpty()) {
@@ -161,6 +180,33 @@ enum class AudioSyncStep(val label: String) {
     IMPORTING("Importing"),
     CANCELLED("Cancelled"),
     FAILED("Failed")
+}
+
+internal fun transcriptionProgressPercent(
+    sourceIndex: Int,
+    sourceCount: Int,
+    processedChunks: Int,
+): Int {
+    val safeSourceCount = sourceCount.coerceAtLeast(1)
+    val safeSourceIndex = sourceIndex.coerceIn(0, safeSourceCount - 1)
+    val sourceWindow = 44f / safeSourceCount
+    val chunkProgress = processedChunks.coerceAtLeast(0).coerceAtMost(8) / 8f
+    return (20f + safeSourceIndex * sourceWindow + chunkProgress * sourceWindow * 0.8f)
+        .toInt()
+        .coerceIn(20, 64)
+}
+
+internal fun transcriptionProgressStatus(
+    sourceIndex: Int,
+    sourceCount: Int,
+    processedChunks: Int,
+    message: String,
+): String {
+    val safeSourceCount = sourceCount.coerceAtLeast(1)
+    val sourceNumber = (sourceIndex + 1).coerceIn(1, safeSourceCount)
+    val prefix = "Source $sourceNumber of $safeSourceCount, chunk ${processedChunks.coerceAtLeast(0)}"
+    val detail = message.trim()
+    return if (detail.isBlank()) prefix else "$prefix: $detail"
 }
 
 sealed interface AudioSyncRunResult {

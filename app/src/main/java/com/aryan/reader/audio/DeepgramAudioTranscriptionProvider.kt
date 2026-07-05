@@ -2,19 +2,17 @@ package com.aryan.reader.audio
 
 import android.content.Context
 import org.json.JSONObject
-import java.net.URLEncoder
 
 class DeepgramAudioTranscriptionProvider(
     private val context: Context,
     private val apiKey: String,
-    private val model: String = DEEPGRAM_AUDIO_SYNC_DEFAULT_MODEL,
     private val httpClient: ExternalTranscriptionHttpClient = UrlConnectionExternalTranscriptionHttpClient()
 ) : AudioTranscriptionProvider {
     override val id: String = "deepgram-nova"
 
     override suspend fun transcribe(
         request: AudioTranscriptionRequest,
-        progress: (TranscriptionProgress) -> Unit
+        progress: suspend (TranscriptionProgress) -> Unit
     ): TranscriptionResult {
         if (apiKey.isBlank()) {
             return TranscriptionResult.Failure(TranscriptionError.MissingApiKey("Add a Deepgram API key to use Deepgram transcription backup."))
@@ -25,7 +23,7 @@ class DeepgramAudioTranscriptionProvider(
                 val bytes = context.contentResolver.openInputStream(source.uri)?.use { it.readBytes() }
                     ?: error("Unable to open ${source.uri}")
                 val response = httpClient.postBytes(
-                    url = "https://api.deepgram.com/v1/listen?model=${deepgramModelQueryValue()}&smart_format=true",
+                    url = "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true",
                     headers = mapOf("Authorization" to "Token $apiKey"),
                     contentType = context.contentResolver.getType(source.uri) ?: "application/octet-stream",
                     bytes = bytes
@@ -37,12 +35,7 @@ class DeepgramAudioTranscriptionProvider(
             TranscriptionResult.Failure(TranscriptionError.ExternalServiceFailed("Deepgram transcription failed: ${error.message ?: "unknown error"}", error))
         }
     }
-
-    private fun deepgramModelQueryValue(): String =
-        URLEncoder.encode(model.ifBlank { DEEPGRAM_AUDIO_SYNC_DEFAULT_MODEL }, Charsets.UTF_8.name())
 }
-
-const val DEEPGRAM_AUDIO_SYNC_DEFAULT_MODEL = "nova-3"
 
 object DeepgramTranscriptionResponseParser {
     fun parse(json: String): List<TranscriptSegment> {

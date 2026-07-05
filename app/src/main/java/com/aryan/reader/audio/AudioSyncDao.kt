@@ -19,6 +19,9 @@ interface AudioSyncDao {
     @Query("SELECT * FROM audio_sync_sessions ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<AudioSyncEntity>>
 
+    @Query("SELECT sessionId, bookId, status, progressPercent, updatedAt FROM audio_sync_sessions ORDER BY updatedAt DESC")
+    fun observeAllSummaries(): Flow<List<AudioSyncSessionSummary>>
+
     @Query("UPDATE audio_sync_sessions SET status = :status, progressPercent = :progressPercent, currentStep = :currentStep, updatedAt = :updatedAt WHERE sessionId = :sessionId")
     suspend fun updateProgress(sessionId: String, status: String, progressPercent: Int, currentStep: String?, updatedAt: Long)
 
