@@ -54,8 +54,11 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.aryan.reader.audio.AudioSyncFileImporter
+import com.aryan.reader.audio.AudioSyncProvider
 import com.aryan.reader.audio.AudioSyncRepository
+import com.aryan.reader.audio.AudioSyncSession
 import com.aryan.reader.audio.AudioSyncWorker
+import com.aryan.reader.audio.WhisperModelManager
 import com.aryan.reader.data.BookMetadata
 import com.aryan.reader.data.BookMetadataEdit
 import com.aryan.reader.data.CloudflareRepository
@@ -200,6 +203,7 @@ open class MainViewModel(application: Application) : AndroidViewModel(applicatio
     private val epubMetadataFileEditor by lazy { EpubMetadataFileEditor(appContext) }
     private val audioSyncRepository by lazy { AudioSyncRepository(appContext) }
     private val audioSyncFileImporter by lazy { AudioSyncFileImporter(appContext) }
+    private val whisperModelManager by lazy { WhisperModelManager(appContext) }
     private val pageLayoutRepository by lazy { PageLayoutRepository(appContext) }
     private val pdfRichTextRepository by lazy { com.aryan.reader.pdf.PdfRichTextRepository(appContext) }
     private val pdfTextBoxRepository by lazy { PdfTextBoxRepository(appContext) }
@@ -244,13 +248,19 @@ open class MainViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun observeAudioSyncSessions() = audioSyncRepository.observeAllSessions()
 
+    fun observeAudioSyncSessionSummaries() = audioSyncRepository.observeAllSessionSummaries()
+
     fun observeAudioSyncSessionsForBook(bookId: String) = audioSyncRepository.observeBookSessions(bookId)
 
-    fun startAudioSync(book: RecentFileItem, audioUris: List<Uri>) {
+    fun startAudioSync(
+        book: RecentFileItem,
+        audioUris: List<Uri>,
+        provider: AudioSyncProvider = AudioSyncProvider.LOCAL_WHISPER
+    ) {
         viewModelScope.launch {
             var createdSessionId: String? = null
             runCatching {
-                val session = audioSyncRepository.createSession(book)
+                val session = audioSyncRepository.createSession(book, provider = provider)
                 createdSessionId = session.sessionId
                 val sources = audioSyncFileImporter.importFromUris(appContext, session.sessionId, audioUris)
                 audioSyncRepository.updateAudioSources(session.sessionId, sources)
@@ -269,6 +279,43 @@ open class MainViewModel(application: Application) : AndroidViewModel(applicatio
                 Timber.e(error, "Failed to start audio sync")
             }
         }
+    }
+
+    fun selectedWhisperModelName(): String? = whisperModelManager.selectedOrBundledModelName()
+
+    fun importWhisperModel(uri: Uri, displayName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = whisperModelManager.importModel(appContext, uri, displayName)
+            withContext(Dispatchers.Main) {
+                when (result) {
+                    is WhisperModelManager.ImportResult.Imported -> {
+                        showBanner(appContext.getString(R.string.audio_sync_model_imported, result.model.name))
+                    }
+                    is WhisperModelManager.ImportResult.Invalid -> {
+                        showBanner(result.reason, isError = true)
+                    }
+                }
+            }
+        }
+    }
+
+    fun openAudioSyncOutput(session: AudioSyncSession) {
+        val outputPath = session.outputEpubPath
+        if (outputPath.isNullOrBlank()) {
+            showBanner(appContext.getString(R.string.audio_sync_output_missing), isError = true)
+            return
+        }
+        val outputFile = File(outputPath)
+        if (!outputFile.isFile) {
+            showBanner(appContext.getString(R.string.audio_sync_output_missing), isError = true)
+            return
+        }
+        openBook(
+            uri = outputFile.toURI().toString().toUri(),
+            bookId = "readaloud-${session.bookId}-${session.sessionId}",
+            type = FileType.EPUB,
+            originalDisplayName = "${session.bookTitle} Readaloud.epub"
+        )
     }
 
     fun cancelAudioSync(sessionId: String) {
@@ -1413,11 +1460,6 @@ open class MainViewModel(application: Application) : AndroidViewModel(applicatio
 
     private suspend fun deletePendingExternalFileRemoval(removal: PendingExternalFileRemoval) {
         var shouldRetry = false
-        runCatching {
-            cleanupBookDataLocally(removal.bookId)
-        }.onFailure { error ->
-            Timber.w(error, "Failed to clear local caches for pending external file ${removal.bookId}")
-        }
 
         runCatching {
             recentFilesRepository.deleteFilePermanently(listOf(removal.bookId))
@@ -1437,6 +1479,12 @@ open class MainViewModel(application: Application) : AndroidViewModel(applicatio
 
         if (!shouldRetry) {
             clearPendingExternalFileRemovals(setOf(removal.bookId))
+        }
+
+        runCatching {
+            cleanupBookDataLocally(removal.bookId)
+        }.onFailure { error ->
+            Timber.w(error, "Failed to clear local caches for pending external file ${removal.bookId}")
         }
     }
 
@@ -3668,7 +3716,46 @@ open class MainViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private fun syncWithCloud(showBanner: Boolean = false) = viewModelScope.launch {
+    private fun enqueueCloudSyncWorker(showBanner: Boolean): Job = viewModelScope.launch {
+        val workManager = WorkManager.getInstance(appContext)
+        val request = OneTimeWorkRequestBuilder<CloudSyncWorker>().build()
+        workManager.enqueueUniqueWork(
+            CloudSyncWorker.WORK_NAME,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request
+        )
+        if (showBanner) {
+            _internalState.update {
+                it.copy(bannerMessage = BannerMessage(appContext.getString(R.string.banner_cloud_sync_checking)))
+            }
+        }
+        workManager.getWorkInfoByIdFlow(request.id).filterNotNull().first { workInfo ->
+            when (workInfo.state) {
+                WorkInfo.State.SUCCEEDED -> if (showBanner) {
+                    _internalState.update {
+                        it.copy(
+                            isLoading = false,
+                            bannerMessage = BannerMessage(appContext.getString(R.string.banner_cloud_sync_complete))
+                        )
+                    }
+                }
+                WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> if (showBanner) {
+                    _internalState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = appContext.getString(R.string.error_sync_library_failed)
+                        )
+                    }
+                }
+                else -> Unit
+            }
+            workInfo.state.isFinished
+        }
+    }
+
+    internal fun syncWithCloud(showBanner: Boolean = false, runInWorker: Boolean = false): Job {
+        if (!runInWorker) return enqueueCloudSyncWorker(showBanner)
+        return viewModelScope.launch {
         val hasPermissions = googleDriveRepository.hasDrivePermissions(appContext)
         val currentUser = _internalState.value.currentUser
 
@@ -4199,6 +4286,7 @@ open class MainViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         }
+    }
     }
 
     private suspend fun downloadAnnotationsForBook(

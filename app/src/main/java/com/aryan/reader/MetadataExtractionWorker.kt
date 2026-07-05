@@ -84,6 +84,18 @@ class MetadataExtractionWorker(
                 "MetadataWorker start mode=metadata books=${filesToProcess.size} " +
                     "batchLimit=$METADATA_WORKER_BOOK_BATCH_SIZE folder=${sourceFolderUri ?: "ALL"}"
             )
+            setForeground(
+                SyncNotificationHelper.metadataSyncForegroundInfo(
+                    context = appContext,
+                    text = appContext.getString(
+                        R.string.notification_folder_metadata_progress,
+                        0,
+                        filesToProcess.size
+                    ),
+                    progress = 0,
+                    maxProgress = filesToProcess.size
+                )
+            )
 
             val pendingUpdates = mutableListOf<RecentFileItem>()
             var processed = 0
@@ -186,6 +198,20 @@ class MetadataExtractionWorker(
                     }
 
                     processed++
+                    if (processed == 1 || processed % 25 == 0 || processed == filesToProcess.size) {
+                        setForeground(
+                            SyncNotificationHelper.metadataSyncForegroundInfo(
+                                context = appContext,
+                                text = appContext.getString(
+                                    R.string.notification_folder_metadata_progress,
+                                    processed,
+                                    filesToProcess.size
+                                ),
+                                progress = processed,
+                                maxProgress = filesToProcess.size
+                            )
+                        )
+                    }
                     if (processed % METADATA_PROGRESS_LOG_EVERY == 0) {
                         ReaderPerfLog.d(
                             "MetadataWorker progress mode=metadata processed=$processed updated=$updated covers=$coversUpdated failed=$failed"

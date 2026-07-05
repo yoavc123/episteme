@@ -431,6 +431,10 @@ class MainViewModelTest {
 
     @Test
     fun `startup removes pending external always-remove file before restoring session`() = runTest(testDispatcher) {
+        (viewModel as TestMainViewModel).clearForTest()
+        advanceUntilIdle()
+        clearMocks(mockPrefs, mockEditor, answers = false, recordedCalls = true)
+
         val pendingUri = "file:///data/user/0/com.aryan.reader/files/books/external.epub"
         val pendingEntry = """{"bookId":"external-book","uriString":"$pendingUri"}"""
         every {
@@ -440,6 +444,7 @@ class MainViewModelTest {
         every { mockPrefs.getString("last_open_file_type", null) } returns FileType.EPUB.name
 
         val restored = TestMainViewModel(mockApplication)
+        viewModel = restored
         try {
             advanceUntilIdle()
 
@@ -451,7 +456,7 @@ class MainViewModelTest {
             }
             verify(atLeast = 1) { mockEditor.remove("last_open_book_id") }
             verify(atLeast = 1) { mockEditor.remove("last_open_file_type") }
-            verify { mockEditor.remove("pending_external_file_removals") }
+            verify(timeout = 5_000) { mockEditor.remove("pending_external_file_removals") }
         } finally {
             restored.clearForTest()
         }

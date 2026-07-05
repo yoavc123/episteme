@@ -105,8 +105,20 @@ class FolderSyncWorker(
             syncMutex.withLock {
                 var allSuccess = true
 
-                for (folderConfig in foldersToProcess) {
-                    val success = performSyncForFolder(folderConfig, isMetadataOnly)
+                setForeground(
+                    SyncNotificationHelper.folderSyncForegroundInfo(
+                        appContext,
+                        appContext.getString(R.string.notification_folder_sync_preparing)
+                    )
+                )
+
+                for ((index, folderConfig) in foldersToProcess.withIndex()) {
+                    val success = performSyncForFolder(
+                        folderConfig = folderConfig,
+                        metadataOnly = isMetadataOnly,
+                        folderIndex = index + 1,
+                        folderCount = foldersToProcess.size
+                    )
                     if (!success) allSuccess = false
                 }
 
@@ -136,7 +148,12 @@ class FolderSyncWorker(
         }
     }
 
-    private suspend fun performSyncForFolder(folderConfig: SyncedFolder, metadataOnly: Boolean): Boolean {
+    private suspend fun performSyncForFolder(
+        folderConfig: SyncedFolder,
+        metadataOnly: Boolean,
+        folderIndex: Int,
+        folderCount: Int
+    ): Boolean {
         val folderUriString = folderConfig.uriString
         val allowedFileTypes = folderConfig.allowedFileTypes
         if (folderUriString.isBlank()) return true
@@ -168,6 +185,21 @@ class FolderSyncWorker(
             if (documentTree == null || !documentTree.isDirectory) {
                 return false
             }
+            val folderName = documentTree.name ?: folderConfig.name
+            setForeground(
+                SyncNotificationHelper.folderSyncForegroundInfo(
+                    context = appContext,
+                    text = appContext.getString(
+                        R.string.notification_folder_sync_progress,
+                        folderIndex,
+                        folderCount,
+                        folderName
+                    ),
+                    progress = folderIndex - 1,
+                    maxProgress = folderCount,
+                    indeterminate = false
+                )
+            )
 
             ReaderPerfLog.d("FolderSync phase legacy-sidecar-migration mapped-to-shared")
 
@@ -200,7 +232,22 @@ class FolderSyncWorker(
                     scanFolderFiles(
                         folderUri = folderUri,
                         folderUriString = folderUriString,
-                        allowedFileTypes = allowedFileTypes
+                        allowedFileTypes = allowedFileTypes,
+                        onProgress = { seen ->
+                            setForeground(
+                                SyncNotificationHelper.folderSyncForegroundInfo(
+                                    context = appContext,
+                                    text = appContext.getString(
+                                        R.string.notification_folder_sync_scanning,
+                                        folderName,
+                                        seen
+                                    ),
+                                    progress = folderIndex - 1,
+                                    maxProgress = folderCount,
+                                    indeterminate = false
+                                )
+                            )
+                        }
                     )
                 }
             }
@@ -220,7 +267,7 @@ class FolderSyncWorker(
             val nowMillis = System.currentTimeMillis()
             val folder = SyncedFolder(
                 uriString = folderUriString,
-                name = documentTree.name ?: folderConfig.name,
+                name = folderName,
                 lastScanTime = nowMillis,
                 allowedFileTypes = allowedFileTypes,
                 localSyncEnabled = true
@@ -349,6 +396,21 @@ class FolderSyncWorker(
                 }
             }
 
+            setForeground(
+                SyncNotificationHelper.folderSyncForegroundInfo(
+                    context = appContext,
+                    text = appContext.getString(
+                        R.string.notification_folder_sync_progress,
+                        folderIndex,
+                        folderCount,
+                        folderName
+                    ),
+                    progress = folderIndex,
+                    maxProgress = folderCount,
+                    indeterminate = false
+                )
+            )
+
             return true
 
         } catch (e: Exception) {
@@ -423,10 +485,11 @@ class FolderSyncWorker(
         val stoppedForUnlinkedFolder: Boolean = false
     )
 
-    private fun scanFolderFiles(
+    private suspend fun scanFolderFiles(
         folderUri: android.net.Uri,
         folderUriString: String,
-        allowedFileTypes: Set<FileType>
+        allowedFileTypes: Set<FileType>,
+        onProgress: suspend (Int) -> Unit
     ): AndroidFolderScanResult {
         Timber.tag("FolderSync").d("Phase 2: Scanning physical files using raw ContentResolver...")
         val contentResolver = appContext.contentResolver
@@ -470,6 +533,10 @@ class FolderSyncWorker(
                         val name = cursor.getString(nameCol) ?: ""
                         val mimeType = cursor.getString(mimeCol)
                         filesSeen++
+
+                        if (filesSeen == 1 || filesSeen % 100 == 0) {
+                            onProgress(filesSeen)
+                        }
 
                         if (filesSeen % 100 == 0 && !isFolderStillLinked(folderUriString)) {
                             ReaderPerfLog.w("FolderSync folder abort: folder unlinked after entries=$filesSeen folder=$folderUriString")

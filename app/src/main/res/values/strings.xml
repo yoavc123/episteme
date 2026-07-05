@@ -110,10 +110,6 @@
     <string name="provider_deepgram" translatable="false">Deepgram</string>
     <string name="ai_settings_transcription_backups">Transcription backup providers</string>
     <string name="ai_settings_transcription_backups_offline">External transcription backups are hidden in offline builds. Local Whisper model import remains available in audio sync.</string>
-    <string name="ai_settings_openai_audio_sync_model">OpenAI audiobook model</string>
-    <string name="ai_settings_openai_audio_sync_model_desc">Used when OpenAI transcribes audiobook audio.</string>
-    <string name="ai_settings_deepgram_audio_sync_model">Deepgram audiobook model</string>
-    <string name="ai_settings_deepgram_audio_sync_model_desc">Used when Deepgram transcribes audiobook audio.</string>
 
     <!-- Top Bar Options -->
     <string name="options_recent_limit">Recent Files Limit</string>
@@ -527,6 +523,16 @@
     <!-- "Episteme Pro" is the product tier name — do not translate "Episteme". -->
     <string name="error_sync_pro_feature">Sync is an Episteme Pro feature.</string>
     <string name="error_not_signed_in_sync">Not signed in, cannot sync.</string>
+    <string name="notification_sync_channel_name">Sync progress</string>
+    <string name="notification_sync_channel_desc">Shows library and folder sync progress.</string>
+    <string name="notification_folder_sync_title">Syncing folders</string>
+    <string name="notification_folder_sync_preparing">Preparing folder sync…</string>
+    <string name="notification_folder_sync_progress">Folder %1$d of %2$d: %3$s</string>
+    <string name="notification_folder_sync_scanning">Scanning %1$s… %2$d files checked</string>
+    <string name="notification_folder_metadata_title">Updating folder metadata</string>
+    <string name="notification_folder_metadata_progress">Processed %1$d of %2$d books</string>
+    <string name="notification_cloud_sync_title">Syncing cloud library</string>
+    <string name="notification_cloud_sync_running">Cloud sync is running…</string>
     <string name="banner_cloud_sync_checking">Cloud Sync: Checking for updates…</string>
     <string name="banner_cloud_sync_complete">Cloud Sync: Complete.</string>
     <string name="error_sync_library_failed">Failed to sync library.</string>
@@ -1280,6 +1286,43 @@
     <string name="tts_synced_audio_cta_desc">No synced audio is attached to this EPUB yet. Sync an audio file to create a readaloud EPUB.</string>
     <string name="tts_synced_audio_start">Play synced audio</string>
     <string name="tts_synced_audio_sync_cta">Sync audio for this book</string>
+    <string name="audio_sync_action">Sync audio</string>
+    <string name="audio_sync_action_compact">Sync</string>
+    <string name="audio_sync_sheet_title">Sync book audio</string>
+    <string name="audio_sync_no_session_desc">Choose audio files and a transcription provider to create a synced EPUB readaloud file.</string>
+    <string name="audio_sync_provider_label">Provider: %1$s</string>
+    <string name="audio_sync_waiting_for_audio">Waiting for audio selection.</string>
+    <string name="audio_sync_cancel">Cancel sync</string>
+    <string name="audio_sync_open_output">Open synced EPUB</string>
+    <string name="audio_sync_audio_title">Audio files</string>
+    <string name="audio_sync_audio_desc">Select one or more audio tracks that match this EPUB.</string>
+    <string name="audio_sync_add_audio">Add audio</string>
+    <string name="audio_sync_no_audio_selected">No audio files selected yet.</string>
+    <string name="audio_sync_remove_audio">Remove audio</string>
+    <string name="audio_sync_provider_title">Transcription provider</string>
+    <string name="audio_sync_progress_title">Sync progress</string>
+    <string name="audio_sync_model_missing">No local Whisper model selected.</string>
+    <string name="audio_sync_model_ready">Local model ready: %1$s</string>
+    <string name="audio_sync_import_model">Import model</string>
+    <string name="audio_sync_retry">Retry sync</string>
+    <string name="audio_sync_start">Start sync</string>
+    <string name="audio_sync_starting_progress">Preparing the sync session…</string>
+    <string name="audio_sync_model_imported">Imported Whisper model: %1$s</string>
+    <string name="audio_sync_output_missing">The synced EPUB output is no longer available.</string>
+    <string name="audio_sync_provider_local">Local Whisper</string>
+    <string name="audio_sync_provider_local_desc">Runs on this device with your imported model.</string>
+    <string name="audio_sync_provider_openai">OpenAI backup</string>
+    <string name="audio_sync_provider_openai_desc">Uses your configured OpenAI key directly from the app.</string>
+    <string name="audio_sync_provider_deepgram">Deepgram backup</string>
+    <string name="audio_sync_provider_deepgram_desc">Uses your configured Deepgram key directly from the app.</string>
+    <string name="audio_sync_status_pending">Pending</string>
+    <string name="audio_sync_status_progress">Syncing %1$d%%</string>
+    <string name="audio_sync_status_ready">Ready</string>
+    <string name="audio_sync_status_retry">Retry</string>
+    <string name="audio_sync_status_running">Running</string>
+    <string name="audio_sync_status_completed">Completed</string>
+    <string name="audio_sync_status_failed">Failed</string>
+    <string name="audio_sync_status_cancelled">Cancelled</string>
     <string name="tts_tab_cloud_voices">Cloud Voices</string>
     <string name="tts_tab_device_voices">Device Voices</string>
     <string name="tts_tab_cloud_cache">Cloud Cache</string>
