@@ -80,16 +80,15 @@ set(BUILD_SHARED_LIBS OFF)
 # are not explicitly exported by the library's public API for shared builds.
 set_target_properties(mobi PROPERTIES C_VISIBILITY_PRESET default)
 
-add_library(
-        whisper
-        STATIC
-        ${WHISPER_CPP_DIR}/src/whisper_stub.cpp
-)
-
-target_include_directories(whisper
-        PUBLIC
-        ${WHISPER_CPP_DIR}/include
-)
+set(WHISPER_BUILD_TESTS OFF CACHE BOOL "Disable whisper.cpp tests" FORCE)
+set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "Disable whisper.cpp examples" FORCE)
+set(WHISPER_BUILD_SERVER OFF CACHE BOOL "Disable whisper.cpp server" FORCE)
+set(WHISPER_CURL OFF CACHE BOOL "Disable whisper.cpp model downloads" FORCE)
+set(WHISPER_ALL_WARNINGS OFF CACHE BOOL "Disable whisper.cpp warning flags" FORCE)
+set(GGML_ALL_WARNINGS OFF CACHE BOOL "Disable ggml warning flags" FORCE)
+set(GGML_OPENMP OFF CACHE BOOL "Disable OpenMP for Android NDK build" FORCE)
+set(GGML_NATIVE OFF CACHE BOOL "Disable host-native flags while cross-compiling" FORCE)
+add_subdirectory(third_party/whisper.cpp)
 
 
 # ===================================================================
