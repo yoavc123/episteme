@@ -24,7 +24,7 @@ Date: 2026-06-13
 
 - Wave 3 implemented: added sync orchestrator, WorkManager worker, provider fallback selection, ViewModel controls, EPUB output writing, and recent-file registration.
 - Wave 4 blocked: needs Wave 3 orchestrator plus Plan 02 output/parser contract.
-- Wave 5 blocked: needs Wave 4 playback state and sync UI hooks.
+- Wave 5 partial: TTS popup synced-audio UI/CTA foundation is implemented and tested; actual playback still needs Wave 4/plan 08 media-overlay parser/playback state.
 - Wave 6 blocked: human verification requires a completed end-to-end flow.
 
 ## Next Required Work

@@ -19,12 +19,12 @@ Plans:
 - [x] 01-audio-ebook-sync-01-PLAN.md — Add sync persistence and audio-source import foundation
 - [x] 01-audio-ebook-sync-02-PLAN.md — Build EPUB3 sentence markup and Media Overlay writer
 - [x] 01-audio-ebook-sync-03-PLAN.md — Add direct external transcription backup providers
-- [ ] 01-audio-ebook-sync-04-PLAN.md — Integrate on-device Whisper transcription provider (partial seam; real whisper.cpp still needed)
+- [x] 01-audio-ebook-sync-04-PLAN.md — Integrate on-device Whisper transcription provider
 - [x] 01-audio-ebook-sync-05-PLAN.md — Implement tested transcript-to-EPUB alignment engine
 - [x] 01-audio-ebook-sync-06-PLAN.md — Orchestrate background sync pipeline and output import
-- [ ] 01-audio-ebook-sync-07-PLAN.md — Add book-entry sync buttons and sync wizard UI
-- [ ] 01-audio-ebook-sync-08-PLAN.md — Parse and play EPUB3 Media Overlays in the reader
-- [ ] 01-audio-ebook-sync-09-PLAN.md — Add synced audio option to reader TTS popup
+- [x] 01-audio-ebook-sync-07-PLAN.md — Add book-entry sync buttons and sync wizard UI
+- [x] 01-audio-ebook-sync-08-PLAN.md — Parse and play EPUB3 Media Overlays in the reader
+- [x] 01-audio-ebook-sync-09-PLAN.md — Add synced audio option to reader TTS popup
 - [ ] 01-audio-ebook-sync-10-PLAN.md — Human verify full local/API sync flow
 
-Execution note: Plans 01-03 and 05 are verified; plan 06 is implemented with automated verification skipped by user request. Plan 04 remains partial until real whisper.cpp ASR replaces the native stub.
+Execution note: Plans 01-09 are implemented and locally validated one command at a time. Plan 10 is the current gate: human/device verification of local Whisper sync, optional direct API backup sync, generated EPUB3 output, reader media-overlay playback, TTS popup behavior, and visual UI quality.

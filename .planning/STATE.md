@@ -25,12 +25,13 @@
 
 ## Blockers
 
-- Local ASR integration currently has a compilable provider/native seam, but the native bridge is a placeholder and must be replaced with real whisper.cpp transcription.
-- Waves 3-6 still require pipeline/UI/reader integration work and cannot be marked complete from the current scaffolding alone.
-- Further Gradle verification paused at user request; remaining Android/native validation will be done manually in Android Studio.
+- Plan 10 is a blocking human/device verification checkpoint. It requires an Android device/emulator, a test EPUB, matching short audio, and a user-imported Whisper model; optional API backup verification requires a configured OpenAI or Deepgram key.
+- Visual QA for the new Compose surfaces cannot be completed objectively without a rendered Android capture from a device/emulator.
 
 ## Latest Execution Note
 
+- 2026-06-24: Continued execution through plan 10 readiness. Completed real whisper.cpp native integration, sync UI strings/output-open compile fixes, media overlay parser/playback wiring, and TTS popup synced playback wiring. Validated one command at a time: `EpubMediaOverlayParserTest`, `SyncedAudioTtsOptionModelTest`, `TtsModePolicyTest`, `AndroidStringFormatResourcesTest`, `externalNativeBuildOssDebug`, `WhisperModelManagerTest`, `WhisperLocalTranscriptionProviderTest`, and `assembleOssDebug`. Current work is at plan 10 human verification.
+- 2026-06-16: Implemented wave 5 TTS popup foundation. Added synced-audio CTA/play action state, guarded `SYNCED` mode from becoming saved synthetic TTS default, added tests/translations, and validated affected tests one class at a time plus `assembleOssDebug`. `MainViewModelTest` skipped at user request. Actual media-overlay playback remains dependent on plan 08.
 - 2026-06-14: Implemented wave 3 plan 06 orchestration. Added provider selection, sync orchestrator, WorkManager worker, ViewModel controls, output registration into recent files, and focused tests. Automated verification skipped at user request.
 - 2026-06-14: Continued wave 2. Completed plan 05 alignment engine and fixed scoring defects found by targeted tests. Improved plan 04 audio decoding to use MediaCodec decoded PCM with 16 kHz mono resampling, but plan 04 remains partial because native Whisper is still a placeholder stub.
 - 2026-06-14: Completed and verified plans 01-03. Added audio sync persistence/importer, EPUB3 Media Overlay writer, OpenAI/Deepgram direct BYOK transcription backups, and focused tests. Also fixed two stale shared test references that blocked `:shared:desktopTest` compilation.
