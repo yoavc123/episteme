@@ -1,6 +1,7 @@
 // PdfToolbars.kt
 package com.aryan.reader.pdf
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -367,6 +368,16 @@ internal fun PdfTopBar(
                             var showReadingModeExpanded by remember { mutableStateOf(false) }
                             var showTtsSettingsExpanded by remember { mutableStateOf(false) }
                             var showFileActionsExpanded by remember { mutableStateOf(false) }
+                            fun dismissMoreMenu() {
+                                showHiddenToolsExpanded = false
+                                showReadingModeExpanded = false
+                                showTtsSettingsExpanded = false
+                                showFileActionsExpanded = false
+                                showMoreMenu = false
+                            }
+                            BackHandler(enabled = showMoreMenu) {
+                                dismissMoreMenu()
+                            }
                             TooltipIconButton(
                                 text = stringResource(R.string.tooltip_more_options),
                                 description = stringResource(R.string.tooltip_more_options_desc),
@@ -382,13 +393,7 @@ internal fun PdfTopBar(
 
                             DropdownMenu(
                                 expanded = showMoreMenu,
-                                onDismissRequest = {
-                                    showHiddenToolsExpanded = false
-                                    showReadingModeExpanded = false
-                                    showTtsSettingsExpanded = false
-                                    showFileActionsExpanded = false
-                                    showMoreMenu = false
-                                }
+                                onDismissRequest = { dismissMoreMenu() }
                             ) {
                                 val hiddenToolbarTools = toolOrder.filter { isPdfToolbarPlacementTool(it) && hiddenTools.contains(it.name) }
                                 val showTtsVoiceSettings = !hiddenTools.contains(PdfReaderTool.TTS_SETTINGS.name)

@@ -144,7 +144,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.aryan.reader.audio.AudioSyncEntryAction
+import com.aryan.reader.audio.AudioSyncSessionSummary
+import com.aryan.reader.audio.AudioSyncSheet
+import com.aryan.reader.audio.canAudioSync
 import com.aryan.reader.data.RecentFileItem
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.text.SimpleDateFormat
@@ -184,6 +189,17 @@ fun HomeScreen(
         val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
         val snackbarHostState = remember { SnackbarHostState() }
         val deviceLimitState = uiState.deviceLimitState
+        val audioSyncSessions by viewModel.observeAudioSyncSessionSummaries().collectAsStateWithLifecycle(initialValue = emptyList())
+        var selectedAudioSyncBook by remember { mutableStateOf<RecentFileItem?>(null) }
+        var selectedWhisperModelName by remember { mutableStateOf(viewModel.selectedWhisperModelName()) }
+        val selectedAudioSyncBookId = selectedAudioSyncBook?.bookId
+        val selectedAudioSyncSessions by remember(selectedAudioSyncBookId) {
+            if (selectedAudioSyncBookId == null) {
+                flowOf(emptyList())
+            } else {
+                viewModel.observeAudioSyncSessionsForBook(selectedAudioSyncBookId)
+            }
+        }.collectAsStateWithLifecycle(initialValue = emptyList())
 
         var showDeleteConfirmDialog by remember { mutableStateOf(false) }
         var showClearCloudDataDialog by remember { mutableStateOf(false) }
@@ -438,7 +454,12 @@ fun HomeScreen(
                                     isRefreshing = uiState.isRefreshing,
                                     isSyncEnabled = uiState.isSyncEnabled,
                                     hasSyncedFolder = uiState.syncedFolders.any { it.localSyncEnabled },
-                                    usePdfFileNameAsDisplayName = uiState.usePdfFileNameAsDisplayName
+                                    usePdfFileNameAsDisplayName = uiState.usePdfFileNameAsDisplayName,
+                                    audioSyncSessions = audioSyncSessions,
+                                    onAudioSyncClick = { item ->
+                                        selectedWhisperModelName = viewModel.selectedWhisperModelName()
+                                        selectedAudioSyncBook = item
+                                    }
                                 )
                             }
                         }
@@ -578,6 +599,19 @@ fun HomeScreen(
                             onDismiss = { showAppThemePanel = false }
                         )
                     }
+
+                    AudioSyncSheet(
+                        isVisible = selectedAudioSyncBook != null,
+                        book = selectedAudioSyncBook,
+                        sessions = selectedAudioSyncSessions,
+                        selectedModelName = selectedWhisperModelName,
+                        onStartSync = viewModel::startAudioSync,
+                        onCancelSync = viewModel::cancelAudioSync,
+                        onClearSession = viewModel::clearAudioSyncSession,
+                        onOpenOutput = viewModel::openAudioSyncOutput,
+                        onImportModel = viewModel::importWhisperModel,
+                        onDismiss = { selectedAudioSyncBook = null }
+                    )
                 }
             }
             if (showAboutDialog) {
@@ -637,7 +671,9 @@ private fun RecentFilesContent(
     isRefreshing: Boolean,
     isSyncEnabled: Boolean,
     hasSyncedFolder: Boolean,
-    usePdfFileNameAsDisplayName: Boolean
+    usePdfFileNameAsDisplayName: Boolean,
+    audioSyncSessions: List<AudioSyncSessionSummary>,
+    onAudioSyncClick: (RecentFileItem) -> Unit,
 ) {
     val canRefresh = isSyncEnabled || hasSyncedFolder
     val selectedItemUris = remember(selectedContextItems) {
@@ -662,7 +698,9 @@ private fun RecentFilesContent(
                 windowSizeClass = windowSizeClass,
                 contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp),
                 downloadingBookIds = downloadingBookIds,
-                usePdfFileNameAsDisplayName = usePdfFileNameAsDisplayName
+                usePdfFileNameAsDisplayName = usePdfFileNameAsDisplayName,
+                audioSyncSessions = audioSyncSessions,
+                onAudioSyncClick = onAudioSyncClick
             )
 
             Row(
@@ -712,11 +750,18 @@ private fun RecentFilesGrid(
     contentPadding: PaddingValues = PaddingValues(vertical = 8.dp),
     downloadingBookIds: Set<String>,
     usePdfFileNameAsDisplayName: Boolean,
+    audioSyncSessions: List<AudioSyncSessionSummary>,
+    onAudioSyncClick: (RecentFileItem) -> Unit,
 ) {
     val gridCells = when (windowSizeClass.widthSizeClass) {
         WindowWidthSizeClass.Compact -> GridCells.Fixed(3)
         WindowWidthSizeClass.Medium -> GridCells.Adaptive(minSize = 140.dp)
         else -> GridCells.Adaptive(minSize = 160.dp)
+    }
+    val audioSyncSessionsByBook = remember(audioSyncSessions) {
+        audioSyncSessions
+            .groupBy { it.bookId }
+            .mapValues { (_, sessions) -> sessions.maxByOrNull { it.updatedAt } }
     }
 
     Column(modifier = modifier) {
@@ -795,7 +840,11 @@ private fun RecentFilesGrid(
                     onClick = { onItemClick(item) },
                     onLongClick = { onItemLongClick(item) },
                     isDownloading = item.bookId in downloadingBookIds,
-                    usePdfFileNameAsDisplayName = usePdfFileNameAsDisplayName
+                    usePdfFileNameAsDisplayName = usePdfFileNameAsDisplayName,
+                    audioSyncSession = audioSyncSessionsByBook[item.bookId],
+                    onAudioSyncClick = if (item.canAudioSync()) {
+                        { onAudioSyncClick(item) }
+                    } else null
                 )
             }
         }
@@ -813,6 +862,8 @@ fun RecentFileCard(
     onLongClick: () -> Unit,
     isDownloading: Boolean,
     usePdfFileNameAsDisplayName: Boolean = false,
+    audioSyncSession: AudioSyncSessionSummary? = null,
+    onAudioSyncClick: (() -> Unit)? = null,
 ) {
     val progressPercent = item.progressPercentage?.takeIf { it > 0f }?.coerceIn(0f, 100f)?.toInt()
     val authorText = item.author?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) } ?: " "
@@ -872,6 +923,19 @@ fun RecentFileCard(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(10.dp)
+                    )
+                }
+
+                if (onAudioSyncClick != null) {
+                    AudioSyncEntryAction(
+                        bookId = item.bookId,
+                        session = audioSyncSession,
+                        testTag = "HomeAudioSyncAction_${item.bookId}",
+                        compact = true,
+                        onClick = onAudioSyncClick,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(coverBadgePadding)
                     )
                 }
 

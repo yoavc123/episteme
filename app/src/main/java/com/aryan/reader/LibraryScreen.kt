@@ -140,6 +140,10 @@ import androidx.navigation.NavHostController
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.decode.SvgDecoder
+import com.aryan.reader.audio.AudioSyncEntryAction
+import com.aryan.reader.audio.AudioSyncSessionSummary
+import com.aryan.reader.audio.AudioSyncSheet
+import com.aryan.reader.audio.canAudioSync
 import com.aryan.reader.data.RecentFileItem
 import com.aryan.reader.data.TagEntity
 import com.aryan.reader.opds.OpdsAcquisition
@@ -154,6 +158,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import org.jsoup.Jsoup
 import timber.log.Timber
@@ -271,6 +276,17 @@ fun LibraryScreen(
     var showDeleteShelvesDialog by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
     var itemForInfoDialog by remember { mutableStateOf<RecentFileItem?>(null) }
+    val audioSyncSessions by viewModel.observeAudioSyncSessionSummaries().collectAsStateWithLifecycle(initialValue = emptyList())
+    var selectedAudioSyncBook by remember { mutableStateOf<RecentFileItem?>(null) }
+    var selectedWhisperModelName by remember { mutableStateOf(viewModel.selectedWhisperModelName()) }
+    val selectedAudioSyncBookId = selectedAudioSyncBook?.bookId
+    val selectedAudioSyncSessions by remember(selectedAudioSyncBookId) {
+        if (selectedAudioSyncBookId == null) {
+            flowOf(emptyList())
+        } else {
+            viewModel.observeAudioSyncSessionsForBook(selectedAudioSyncBookId)
+        }
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     BackHandler(enabled = isContextualModeActive) {
         viewModel.clearContextualAction()
@@ -352,7 +368,12 @@ fun LibraryScreen(
             },
             onDeleteCatalogStreams = viewModel::deleteStreamedBooksForCatalog,
             onSettingsClick = { navController.navigate(AppDestinations.SETTINGS_SCREEN_ROUTE) },
-            usePdfFileNameAsDisplayName = uiState.usePdfFileNameAsDisplayName
+            usePdfFileNameAsDisplayName = uiState.usePdfFileNameAsDisplayName,
+            audioSyncSessions = audioSyncSessions,
+            onAudioSyncClick = { item ->
+                selectedWhisperModelName = viewModel.selectedWhisperModelName()
+                selectedAudioSyncBook = item
+            }
         )
 
 
@@ -419,6 +440,18 @@ fun LibraryScreen(
                 )
             }
         }
+        AudioSyncSheet(
+            isVisible = selectedAudioSyncBook != null,
+            book = selectedAudioSyncBook,
+            sessions = selectedAudioSyncSessions,
+            selectedModelName = selectedWhisperModelName,
+            onStartSync = viewModel::startAudioSync,
+            onCancelSync = viewModel::cancelAudioSync,
+            onClearSession = viewModel::clearAudioSyncSession,
+            onOpenOutput = viewModel::openAudioSyncOutput,
+            onImportModel = viewModel::importWhisperModel,
+            onDismiss = { selectedAudioSyncBook = null }
+        )
         CustomTopBanner(bannerMessage = uiState.bannerMessage)
     }
 }
@@ -603,12 +636,19 @@ fun LibraryScreenContent(
     onDeleteCatalogStreams: (String) -> Unit,
     onSettingsClick: () -> Unit,
     usePdfFileNameAsDisplayName: Boolean,
+    audioSyncSessions: List<AudioSyncSessionSummary>,
+    onAudioSyncClick: (RecentFileItem) -> Unit,
 ) {
     val isBookContextualModeActive = selectedItems.isNotEmpty()
     val isShelfContextualModeActive = selectedShelves.isNotEmpty()
     var showSortMenu by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
     val selectedBookIds = remember(selectedItems) { selectedItems.mapTo(mutableSetOf()) { it.bookId } }
+    val audioSyncSessionsByBook = remember(audioSyncSessions) {
+        audioSyncSessions
+            .groupBy { it.bookId }
+            .mapValues { (_, sessions) -> sessions.maxByOrNull { it.updatedAt } }
+    }
 
     var textFieldValue by remember(isSearchActive) {
         mutableStateOf(TextFieldValue(searchQuery, TextRange(searchQuery.length)))
@@ -882,7 +922,11 @@ fun LibraryScreenContent(
                                     onItemClick = { onItemClick(item) },
                                     onItemLongClick = { onItemLongClick(item) },
                                     isDownloading = item.bookId in downloadingBookIds,
-                                    usePdfFileNameAsDisplayName = usePdfFileNameAsDisplayName
+                                    usePdfFileNameAsDisplayName = usePdfFileNameAsDisplayName,
+                                    audioSyncSession = audioSyncSessionsByBook[item.bookId],
+                                    onAudioSyncClick = if (item.canAudioSync()) {
+                                        { onAudioSyncClick(item) }
+                                    } else null
                                 )
                             }
                         }
@@ -1671,6 +1715,8 @@ private fun LibraryListItem(
     onItemLongClick: () -> Unit,
     isDownloading: Boolean,
     usePdfFileNameAsDisplayName: Boolean = false,
+    audioSyncSession: AudioSyncSessionSummary? = null,
+    onAudioSyncClick: (() -> Unit)? = null,
 ) {
     androidx.compose.material3.ElevatedCard(
         shape = MaterialTheme.shapes.large,
@@ -1780,6 +1826,16 @@ private fun LibraryListItem(
                         )
                     } else {
                         Spacer(modifier = Modifier.weight(1f))
+                    }
+
+                    if (onAudioSyncClick != null) {
+                        AudioSyncEntryAction(
+                            bookId = item.bookId,
+                            session = audioSyncSession,
+                            testTag = "LibraryAudioSyncAction_${item.bookId}",
+                            compact = true,
+                            onClick = onAudioSyncClick
+                        )
                     }
 
                     if (!item.isAvailable) {

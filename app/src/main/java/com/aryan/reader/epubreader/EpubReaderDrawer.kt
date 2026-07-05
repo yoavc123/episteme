@@ -219,6 +219,7 @@ fun EpubReaderDrawerSheet(
     readerImages: List<EpubReaderImageReference>,
     bookmarks: Set<Bookmark>,
     userHighlights: List<UserHighlight>,
+    bookKey: String,
     currentChapterIndex: Int,
     currentChapterInPaginatedMode: Int?,
     renderMode: RenderMode,
@@ -296,6 +297,7 @@ fun EpubReaderDrawerSheet(
                     2 -> HighlightsList(
                         userHighlights = userHighlights,
                         chapters = chapters,
+                        bookKey = bookKey,
                         onNavigateToHighlight = onNavigateToHighlight,
                         onDeleteHighlight = onDeleteHighlight,
                         onEditNote = onEditNote,
@@ -880,6 +882,7 @@ private fun EpubReaderImageThumbnail(
 private fun HighlightsList(
     userHighlights: List<UserHighlight>,
     chapters: List<EpubChapter>,
+    bookKey: String,
     onNavigateToHighlight: (UserHighlight) -> Unit,
     onDeleteHighlight: (UserHighlight) -> Unit,
     onEditNote: (UserHighlight) -> Unit,
@@ -894,7 +897,7 @@ private fun HighlightsList(
     } else {
         var highlightMenuExpandedFor by remember { mutableStateOf<UserHighlight?>(null) }
         var showHighlightDeleteDialogFor by remember { mutableStateOf<UserHighlight?>(null) }
-        var filterWithNotesOnly by remember { mutableStateOf(false) } // ADDED
+        var filterWithNotesOnly by remember(bookKey) { mutableStateOf(false) }
 
         val listState = rememberLazyListState()
 

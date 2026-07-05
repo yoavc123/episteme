@@ -1,6 +1,7 @@
 package com.aryan.reader.epubreader
 
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.compose.foundation.lazy.LazyListState
@@ -123,6 +124,7 @@ import com.aryan.reader.SearchState
 import com.aryan.reader.SearchTopBar
 import com.aryan.reader.TooltipIconButton
 import com.aryan.reader.areReaderAiFeaturesEnabled
+import com.aryan.reader.audio.SyncedAudioPlaybackState
 import com.aryan.reader.loadNativeVoice
 import com.aryan.reader.readerSliderStepPage
 import com.aryan.reader.shared.ui.ReaderMinimalSlider
@@ -538,6 +540,15 @@ fun EpubReaderTopBar(
                         var showHiddenToolsExpanded by remember { mutableStateOf(false) }
                         var showReadingModeExpanded by remember { mutableStateOf(false) }
                         var showTtsSettingsExpanded by remember { mutableStateOf(false) }
+                        fun dismissMoreMenu() {
+                            showHiddenToolsExpanded = false
+                            showReadingModeExpanded = false
+                            showTtsSettingsExpanded = false
+                            showMoreMenu = false
+                        }
+                        BackHandler(enabled = showMoreMenu) {
+                            dismissMoreMenu()
+                        }
                         TooltipIconButton(
                             text = stringResource(R.string.tooltip_more_options),
                             description = stringResource(R.string.tooltip_more_options_desc),
@@ -553,12 +564,7 @@ fun EpubReaderTopBar(
 
                         DropdownMenu(
                             expanded = showMoreMenu,
-                            onDismissRequest = {
-                                showHiddenToolsExpanded = false
-                                showReadingModeExpanded = false
-                                showTtsSettingsExpanded = false
-                                showMoreMenu = false
-                            }
+                            onDismissRequest = { dismissMoreMenu() }
                         ) {
                             val hiddenToolbarTools = toolOrder.filter { it in epubToolbarTools && hiddenTools.contains(it.name) }
                             val showTtsVoiceSettings = !hiddenTools.contains(ReaderTool.TTS_SETTINGS.name)
@@ -2099,10 +2105,14 @@ private fun HiddenEpubToolMenuItem(
 fun TtsOverlayControls(
     ttsController: com.aryan.reader.tts.TtsController,
     ttsState: TtsState,
+    syncedAudioState: SyncedAudioPlaybackState? = null,
     currentTtsMode: com.aryan.reader.tts.TtsPlaybackManager.TtsMode,
     overlaySize: ReaderTtsOverlaySize,
     onOverlaySizeChange: (ReaderTtsOverlaySize) -> Unit,
     onLocateCurrentChunk: () -> Unit,
+    onSyncedAudioPlayPause: () -> Unit = {},
+    onSyncedAudioPrevious: () -> Unit = {},
+    onSyncedAudioNext: () -> Unit = {},
     onOpenTtsSettings: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -2113,9 +2123,18 @@ fun TtsOverlayControls(
     var pitch by remember { mutableFloatStateOf(loadTtsPitch(context)) }
     var isDraggingRate by remember { mutableStateOf(false) }
     var isDraggingPitch by remember { mutableStateOf(false) }
+    val isSyncedAudio = syncedAudioState?.currentClip != null
 
     val activeMode = try { com.aryan.reader.tts.TtsPlaybackManager.TtsMode.valueOf(ttsState.ttsMode) } catch(_: Exception) { com.aryan.reader.tts.TtsPlaybackManager.TtsMode.CLOUD }
-    val progressPercent = ttsState.bookProgressPercent
+    val progressPercent = if (isSyncedAudio) {
+        syncedAudioState?.let { state ->
+            if (state.totalClips > 0 && state.currentIndex >= 0) {
+                (((state.currentIndex + 1).toFloat() / state.totalClips) * 100).roundToInt().coerceIn(0, 100)
+            } else null
+        }
+    } else {
+        ttsState.bookProgressPercent
+    }
     val cleanChapterTitle = remember(ttsState.chapterTitle) {
         ttsState.chapterTitle
             ?.lineSequence()
@@ -2140,12 +2159,20 @@ fun TtsOverlayControls(
             else -> null
         }
     }
-    val chunkLabel = remember(ttsState.currentChunkIndex, ttsState.totalChunks) {
-        formatReaderTtsChunkLabel(ttsState.currentChunkIndex, ttsState.totalChunks)
+    val chunkLabel = remember(isSyncedAudio, syncedAudioState?.currentIndex, syncedAudioState?.totalClips, ttsState.currentChunkIndex, ttsState.totalChunks) {
+        if (isSyncedAudio && syncedAudioState != null) {
+            formatReaderTtsChunkLabel(syncedAudioState.currentIndex, syncedAudioState.totalClips)
+        } else {
+            formatReaderTtsChunkLabel(ttsState.currentChunkIndex, ttsState.totalChunks)
+        }
     }
-    val miniBarTitle = ttsState.bookTitle
-        ?.takeIf { it.isNotBlank() }
-        ?: stringResource(R.string.action_read_aloud)
+    val miniBarTitle = if (isSyncedAudio) {
+        stringResource(R.string.tts_synced_audio_start)
+    } else {
+        ttsState.bookTitle
+            ?.takeIf { it.isNotBlank() }
+            ?: stringResource(R.string.action_read_aloud)
+    }
     val miniBarSubtitle = remember(chapterLabel, chunkLabel, progressPercent, miniBarTitle) {
         listOfNotNull(
             chunkLabel,
@@ -2153,12 +2180,23 @@ fun TtsOverlayControls(
             chapterLabel?.takeIf { it != miniBarTitle }
         ).joinToString(" - ")
     }
-    val canSkipPreviousChunk = !ttsState.isLoading &&
-        ttsState.currentChunkIndex > 0 &&
-        ttsState.totalChunks > 0
-    val canSkipNextChunk = !ttsState.isLoading &&
-        ttsState.currentChunkIndex >= 0 &&
-        ttsState.currentChunkIndex < ttsState.totalChunks - 1
+    val canSkipPreviousChunk = if (isSyncedAudio && syncedAudioState != null) {
+        syncedAudioState.currentIndex > 0 && syncedAudioState.totalClips > 0
+    } else {
+        !ttsState.isLoading && ttsState.currentChunkIndex > 0 && ttsState.totalChunks > 0
+    }
+    val canSkipNextChunk = if (isSyncedAudio && syncedAudioState != null) {
+        syncedAudioState.currentIndex >= 0 && syncedAudioState.currentIndex < syncedAudioState.totalClips - 1
+    } else {
+        !ttsState.isLoading && ttsState.currentChunkIndex >= 0 && ttsState.currentChunkIndex < ttsState.totalChunks - 1
+    }
+    val isPlaybackActive = if (isSyncedAudio) syncedAudioState?.isPlaying == true else ttsState.isPlaying
+    val isPlaybackLoading = !isSyncedAudio && ttsState.isLoading
+    val playPauseAction = {
+        if (isSyncedAudio) onSyncedAudioPlayPause() else if (ttsState.isPlaying) ttsController.pause() else ttsController.resume()
+    }
+    val previousAction = { if (isSyncedAudio) onSyncedAudioPrevious() else ttsController.skipToPreviousChunk() }
+    val nextAction = { if (isSyncedAudio) onSyncedAudioNext() else ttsController.skipToNextChunk() }
 
     val saveAndApply = {
         saveTtsSpeechRate(context, rate)
@@ -2213,7 +2251,7 @@ fun TtsOverlayControls(
                     }
                     Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
                         FilledIconButton(
-                            onClick = { if (ttsState.isPlaying) ttsController.pause() else ttsController.resume() },
+                            onClick = playPauseAction,
                             modifier = Modifier.size(36.dp),
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
@@ -2221,12 +2259,12 @@ fun TtsOverlayControls(
                             )
                         ) {
                             Icon(
-                                painterResource(if (ttsState.isPlaying) R.drawable.pause else R.drawable.play),
+                                painterResource(if (isPlaybackActive) R.drawable.pause else R.drawable.play),
                                 stringResource(R.string.content_desc_play_pause),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-                        if (ttsState.isLoading) CircularProgressIndicator(
+                        if (isPlaybackLoading) CircularProgressIndicator(
                             modifier = Modifier.size(36.dp),
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f),
                             strokeWidth = 2.dp
@@ -2270,7 +2308,7 @@ fun TtsOverlayControls(
 
                     IconButton(
                         enabled = canSkipPreviousChunk,
-                        onClick = { ttsController.skipToPreviousChunk() },
+                        onClick = previousAction,
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
@@ -2282,7 +2320,7 @@ fun TtsOverlayControls(
 
                     Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                         FilledIconButton(
-                            onClick = { if (ttsState.isPlaying) ttsController.pause() else ttsController.resume() },
+                            onClick = playPauseAction,
                             modifier = Modifier.size(44.dp),
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
@@ -2290,12 +2328,12 @@ fun TtsOverlayControls(
                             )
                         ) {
                             Icon(
-                                painterResource(if (ttsState.isPlaying) R.drawable.pause else R.drawable.play),
+                                painterResource(if (isPlaybackActive) R.drawable.pause else R.drawable.play),
                                 stringResource(R.string.content_desc_play_pause),
                                 modifier = Modifier.size(22.dp)
                             )
                         }
-                        if (ttsState.isLoading) {
+                        if (isPlaybackLoading) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(48.dp),
                                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
@@ -2306,7 +2344,7 @@ fun TtsOverlayControls(
 
                     IconButton(
                         enabled = canSkipNextChunk,
-                        onClick = { ttsController.skipToNextChunk() },
+                        onClick = nextAction,
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
@@ -2357,7 +2395,9 @@ fun TtsOverlayControls(
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    if (activeMode == com.aryan.reader.tts.TtsPlaybackManager.TtsMode.CLOUD) {
+                                    if (isSyncedAudio) {
+                                        stringResource(R.string.tts_synced_audio_start)
+                                    } else if (activeMode == com.aryan.reader.tts.TtsPlaybackManager.TtsMode.CLOUD) {
                                         stringResource(R.string.tts_mode_cloud_ai)
                                     } else {
                                         stringResource(R.string.tts_mode_device_native)
@@ -2480,7 +2520,7 @@ fun TtsOverlayControls(
                         ) {
                             IconButton(
                                 enabled = canSkipPreviousChunk,
-                                onClick = { ttsController.skipToPreviousChunk() },
+                                onClick = previousAction,
                                 modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(
@@ -2493,7 +2533,7 @@ fun TtsOverlayControls(
                             // Giant Play/Pause
                             Box(modifier = Modifier.size(56.dp), contentAlignment = Alignment.Center) {
                                 FilledIconButton(
-                                    onClick = { if (ttsState.isPlaying) ttsController.pause() else ttsController.resume() },
+                                    onClick = playPauseAction,
                                     modifier = Modifier.size(56.dp),
                                     colors = IconButtonDefaults.filledIconButtonColors(
                                         containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
@@ -2501,12 +2541,12 @@ fun TtsOverlayControls(
                                     )
                                 ) {
                                     Icon(
-                                        painterResource(if (ttsState.isPlaying) R.drawable.pause else R.drawable.play),
+                                        painterResource(if (isPlaybackActive) R.drawable.pause else R.drawable.play),
                                         stringResource(R.string.content_desc_play_pause),
                                         modifier = Modifier.size(28.dp)
                                     )
                                 }
-                                if (ttsState.isLoading) CircularProgressIndicator(
+                                if (isPlaybackLoading) CircularProgressIndicator(
                                     modifier = Modifier.size(56.dp),
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                     strokeWidth = 3.dp
@@ -2515,7 +2555,7 @@ fun TtsOverlayControls(
 
                             IconButton(
                                 enabled = canSkipNextChunk,
-                                onClick = { ttsController.skipToNextChunk() },
+                                onClick = nextAction,
                                 modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(
@@ -2529,7 +2569,17 @@ fun TtsOverlayControls(
                         Spacer(Modifier.width(12.dp))
 
                         // Unified Sliders Block
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (isSyncedAudio) {
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = miniBarSubtitle.ifBlank { stringResource(R.string.tts_synced_audio_available_desc) },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        } else Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),

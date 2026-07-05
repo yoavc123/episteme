@@ -171,10 +171,17 @@ import com.aryan.reader.SummaryCacheManager
 import com.aryan.reader.TtsSettingsSheet
 import com.aryan.reader.TtsWordReplacementsSheet
 import com.aryan.reader.areReaderAiFeaturesEnabled
+import com.aryan.reader.FileType
+import com.aryan.reader.audio.AudioSyncSheet
+import com.aryan.reader.audio.EpubMediaOverlay
+import com.aryan.reader.audio.EpubMediaOverlayParser
+import com.aryan.reader.audio.SyncedAudioPlaybackManager
 import com.aryan.reader.countWords
 import com.aryan.reader.isByokCloudTtsAvailable
 import com.aryan.reader.data.CustomFontEntity
+import com.aryan.reader.data.RecentFileItem
 import com.aryan.reader.epub.EpubBook
+import com.aryan.reader.epub.contentFilePath
 import com.aryan.reader.epub.hasReadableExtractedContent
 import com.aryan.reader.epub.plainTextCharacterCount
 import com.aryan.reader.fetchAiDefinition
@@ -663,6 +670,24 @@ fun EpubReaderScreen(
     )
 }
 
+private fun readerAudioSyncBook(
+    bookId: String?,
+    epubUri: Uri?,
+    epubBook: EpubBook,
+): RecentFileItem? {
+    if (bookId.isNullOrBlank() || epubUri == null) return null
+    val displayName = epubBook.fileName.takeIf { it.isNotBlank() } ?: epubBook.title
+    return RecentFileItem(
+        bookId = bookId,
+        uriString = epubUri.toString(),
+        type = FileType.EPUB,
+        displayName = displayName,
+        title = epubBook.title.takeIf { it.isNotBlank() } ?: displayName,
+        timestamp = System.currentTimeMillis(),
+        isAvailable = true,
+    )
+}
+
 @Suppress("ControlFlowWithEmptyBody")
 @SuppressLint("UnusedBoxWithConstraintsScope", "ObsoleteSdkInt", "LocalContextGetResourceValueCall")
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -698,6 +723,9 @@ fun EpubReaderHost(
     val window = (view.context as? Activity)?.window
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
+    val audioSyncSessions by viewModel.observeAudioSyncSessionsForBook(stableBookId.orEmpty()).collectAsState(initial = emptyList())
+    var selectedAudioSyncBook by remember { mutableStateOf<RecentFileItem?>(null) }
+    val selectedWhisperModelName = viewModel.selectedWhisperModelName()
     var readerBrightnessSettings by remember { mutableStateOf(loadReaderBrightnessSettings(context)) }
     var showBrightnessSheet by remember { mutableStateOf(false) }
     ReaderBrightnessEffect(window, readerBrightnessSettings)
@@ -1114,6 +1142,30 @@ fun EpubReaderHost(
 
     val ttsController = viewModel.ttsController
     val ttsState by ttsController.ttsState.collectAsState()
+    var mediaOverlay by remember(epubBook.extractionBasePath) { mutableStateOf<EpubMediaOverlay?>(null) }
+    val syncedAudioManager = remember(context, epubBook.extractionBasePath) {
+        SyncedAudioPlaybackManager(context) { ttsController.stop() }
+    }
+    val syncedAudioState by syncedAudioManager.state.collectAsState()
+
+    DisposableEffect(syncedAudioManager) {
+        onDispose { syncedAudioManager.release() }
+    }
+
+    LaunchedEffect(epubBook.extractionBasePath) {
+        val overlay = withContext(Dispatchers.IO) {
+            runCatching { EpubMediaOverlayParser().parseExtracted(File(epubBook.extractionBasePath)) }
+                .onFailure { Timber.w(it, "Failed to parse EPUB media overlays") }
+                .getOrNull()
+        }
+        mediaOverlay = overlay
+        if (overlay?.isAvailable == true) {
+            syncedAudioManager.load(
+                overlay = overlay,
+                source = SyncedAudioPlaybackManager.AudioSource.ExtractedDirectory(File(epubBook.extractionBasePath))
+            )
+        }
+    }
 
     val totalBookLengthChars = remember(chapters) {
         chapters.sumOf { it.plainTextCharacterCount().toLong() }
@@ -1738,6 +1790,40 @@ fun EpubReaderHost(
                 return true
             }
         }
+    }
+
+    suspend fun navigateToSyncedAudioClip(clip: com.aryan.reader.audio.EpubMediaOverlayClip): Boolean {
+        val chapterIndex = chapters.indexOfFirst { chapter ->
+            chapter.contentFilePath().trim('/', '\\') == clip.contentEntryName.substringAfter('/').trim('/', '\\') ||
+                chapter.contentFilePath().trim('/', '\\') == clip.contentHref.substringBefore('#').trim('/', '\\') ||
+                chapter.absPath.trim('/', '\\') == clip.contentEntryName.trim('/', '\\')
+        }.takeIf { it >= 0 } ?: return false
+
+        val elementId = clip.elementId
+        when (currentRenderMode) {
+            RenderMode.VERTICAL_SCROLL -> {
+                initialScrollTargetForChapter = null
+                if (chapterIndex != currentChapterIndex) {
+                    fragmentToLoad = elementId
+                    currentScrollYPosition = 0
+                    currentScrollHeightValue = 0
+                    currentChapterIndex = chapterIndex
+                } else if (elementId != null) {
+                    webViewRefForTts?.evaluateJavascript("javascript:document.getElementById('${escapeJsString(elementId)}')?.scrollIntoView({ behavior: 'smooth', block: 'center' });", null)
+                }
+            }
+            RenderMode.PAGINATED -> {
+                val bookPaginator = paginator as? BookPaginator ?: return false
+                val pageIndex = bookPaginator.findStableChapterStartPage(chapterIndex) ?: return false
+                paginatedPagerState.scrollToPage(pageIndex)
+            }
+        }
+        return true
+    }
+
+    LaunchedEffect(syncedAudioState.currentClip?.index) {
+        val clip = syncedAudioState.currentClip ?: return@LaunchedEffect
+        navigateToSyncedAudioClip(clip)
     }
 
     val onHighlightColorChange: (UserHighlight, HighlightColor) -> Unit = { targetHighlight, newColor ->
@@ -3406,6 +3492,7 @@ fun EpubReaderHost(
                 readerImages = readerImages,
                 bookmarks = bookmarks,
                 userHighlights = userHighlights,
+                bookKey = bookId,
                 currentChapterIndex = currentChapterIndex,
                 currentChapterInPaginatedMode = currentChapterInPaginatedMode,
                 renderMode = currentRenderMode,
@@ -3947,7 +4034,8 @@ fun EpubReaderHost(
             )
         }
     ) {
-        val isTtsSessionActive = (ttsState.currentText != null || ttsState.isLoading) && ttsState.playbackSource == "READER"
+        val isSyncedAudioSessionActive = syncedAudioState.currentClip != null
+        val isTtsSessionActive = ((ttsState.currentText != null || ttsState.isLoading) && ttsState.playbackSource == "READER") || isSyncedAudioSessionActive
 
         val audioManager = remember(context) {
             context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -6570,7 +6658,12 @@ fun EpubReaderHost(
                         showFormatAdjustmentBars = false
                     },
                     onToggleTts = {
-                        if (isTtsSessionActive) {
+                        if (syncedAudioState.isPlaying) {
+                            syncedAudioManager.stop()
+                        } else if (mediaOverlay?.isAvailable == true) {
+                            syncedAudioManager.play()
+                            showBars = true
+                        } else if (isTtsSessionActive) {
                             Timber.d("TTS button clicked: Stopping TTS")
                             userStoppedTts = true
                             ttsController.stop()
@@ -6637,6 +6730,7 @@ fun EpubReaderHost(
                     TtsOverlayControls(
                         ttsController = ttsController,
                         ttsState = ttsState,
+                        syncedAudioState = syncedAudioState.takeIf { isSyncedAudioSessionActive },
                         currentTtsMode = currentTtsMode,
                         overlaySize = ttsOverlaySize,
                         onOverlaySizeChange = { newSize ->
@@ -6644,13 +6738,26 @@ fun EpubReaderHost(
                             saveReaderTtsOverlaySize(context, newSize)
                         },
                         onLocateCurrentChunk = {
-                            logTtsChapterDiag("Locate current chunk requested from TTS overlay")
-                            queuePendingTtsLocate(TTS_LOCATE_REASON_OVERLAY)
+                            if (isSyncedAudioSessionActive) {
+                                syncedAudioState.currentClip?.let { clip -> scope.launch { navigateToSyncedAudioClip(clip) } }
+                            } else {
+                                logTtsChapterDiag("Locate current chunk requested from TTS overlay")
+                                queuePendingTtsLocate(TTS_LOCATE_REASON_OVERLAY)
+                            }
                         },
+                        onSyncedAudioPlayPause = {
+                            if (syncedAudioState.isPlaying) syncedAudioManager.pause() else syncedAudioManager.resume()
+                        },
+                        onSyncedAudioPrevious = { syncedAudioManager.previous() },
+                        onSyncedAudioNext = { syncedAudioManager.next() },
                         onOpenTtsSettings = { showTtsSettingsSheet = true },
                         onClose = {
-                            userStoppedTts = true
-                            ttsController.stop()
+                            if (isSyncedAudioSessionActive) {
+                                syncedAudioManager.stop()
+                            } else {
+                                userStoppedTts = true
+                                ttsController.stop()
+                            }
                         },
                         credits = credits
                     )
@@ -6810,7 +6917,12 @@ fun EpubReaderHost(
                         showFormatAdjustmentBars = false
                     },
                     onToggleTts = {
-                        if (isTtsSessionActive) {
+                        if (syncedAudioState.isPlaying) {
+                            syncedAudioManager.stop()
+                        } else if (mediaOverlay?.isAvailable == true) {
+                            syncedAudioManager.play()
+                            showBars = true
+                        } else if (isTtsSessionActive) {
                             Timber.d("TTS button clicked: Stopping TTS")
                             userStoppedTts = true
                             ttsController.stop()
@@ -7181,16 +7293,36 @@ fun EpubReaderHost(
                 getAuthToken = { viewModel.getAuthToken() },
                 bookTitle = epubBook.title,
                 syncedAudioEligible = true,
-                syncedAudioAvailable = false,
+                syncedAudioAvailable = mediaOverlay?.isAvailable == true,
                 onStartSyncedAudio = {
                     ttsController.stop()
+                    syncedAudioManager.play()
                     showTtsSettingsSheet = false
+                    showBars = true
                 },
                 onOpenAudioSync = {
+                    selectedAudioSyncBook = readerAudioSyncBook(
+                        bookId = stableBookId,
+                        epubUri = uiState.selectedEpubUri,
+                        epubBook = epubBook,
+                    )
                     showTtsSettingsSheet = false
                 }
             )
         }
+
+        AudioSyncSheet(
+            isVisible = selectedAudioSyncBook != null,
+            book = selectedAudioSyncBook,
+            sessions = audioSyncSessions,
+            selectedModelName = selectedWhisperModelName,
+            onStartSync = viewModel::startAudioSync,
+            onCancelSync = viewModel::cancelAudioSync,
+            onClearSession = viewModel::clearAudioSyncSession,
+            onOpenOutput = viewModel::openAudioSyncOutput,
+            onImportModel = viewModel::importWhisperModel,
+            onDismiss = { selectedAudioSyncBook = null }
+        )
 
         TtsWordReplacementsSheet(
             isVisible = showTtsReplacementsSheet,

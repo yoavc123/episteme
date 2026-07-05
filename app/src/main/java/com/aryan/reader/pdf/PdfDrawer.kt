@@ -967,7 +967,7 @@ internal fun PdfNavigationDrawerContent(
                         }
                     } else {
                         var showDeleteConfirmDialogFor by remember { mutableStateOf<PdfUserHighlight?>(null) }
-                        var filterWithNotesOnly by remember { mutableStateOf(false) }
+                        var filterWithNotesOnly by remember(documentKey) { mutableStateOf(false) }
 
                         Column(modifier = Modifier.fillMaxSize()) {
                             Row(
